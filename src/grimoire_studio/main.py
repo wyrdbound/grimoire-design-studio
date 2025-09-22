@@ -1,0 +1,163 @@
+#!/usr/bin/env python3
+"""
+Main entry point for GRIMOIRE Design Studio.
+"""
+
+import argparse
+import signal
+import sys
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from PyQt6.QtWidgets import QApplication
+
+
+def setup_logging(debug: bool = False) -> None:
+    """Set up logging configuration."""
+    import logging
+
+    from grimoire_logging import get_logger
+
+    level = logging.DEBUG if debug else logging.INFO
+    logging.basicConfig(
+        level=level, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+
+    logger = get_logger(__name__)
+    logger.info("GRIMOIRE Design Studio starting...")
+
+
+def parse_arguments() -> argparse.Namespace:
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(
+        description="GRIMOIRE Design Studio - A design studio for GRIMOIRE systems"
+    )
+    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
+    parser.add_argument("--version", action="version", version="%(prog)s 1.0.0")
+    return parser.parse_args()
+
+
+def setup_signal_handlers(app: "QApplication") -> None:
+    """Set up signal handlers for graceful shutdown."""
+
+    def signal_handler(signum: int, frame: Optional[object]) -> None:
+        print(f"\nReceived signal {signum}, shutting down gracefully...")
+        app.quit()
+
+    # Set up Python signal handlers
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
+    # For better Qt integration, also handle SIGINT through Qt
+    def handle_sigint() -> None:
+        print("\nShutdown requested (Ctrl+C), shutting down gracefully...")
+        app.quit()
+
+    # Make the app quit on Ctrl+C by setting up a more responsive timer
+    from PyQt6.QtCore import QTimer
+
+    sigint_timer = QTimer()
+    sigint_timer.timeout.connect(lambda: None)  # Allow Python signal processing
+    sigint_timer.start(50)  # More frequent checks for better responsiveness
+
+
+def main() -> int:
+    """Main application entry point."""
+    args = parse_arguments()
+    setup_logging(debug=args.debug)
+
+    try:
+        # Import Qt after logging is set up
+        from PyQt6.QtGui import QFont
+        from PyQt6.QtWidgets import (
+            QApplication,
+            QLabel,
+            QMainWindow,
+            QVBoxLayout,
+            QWidget,
+        )
+
+        # Create the Qt application
+        app = QApplication(sys.argv)
+        app.setApplicationName("GRIMOIRE Design Studio")
+        app.setApplicationVersion("1.0.0")
+        app.setOrganizationName("Wyrdbound")
+        app.setOrganizationDomain("wyrdbound.com")
+
+        # Set up signal handlers for CTRL+C
+        setup_signal_handlers(app)
+
+        # Create a custom main window that handles CTRL+C
+        class MainWindow(QMainWindow):
+            def __init__(self) -> None:
+                super().__init__()
+                self.setWindowTitle("GRIMOIRE Design Studio v1.0.0")
+                self.resize(800, 600)
+
+            def keyPressEvent(self, event) -> None:  # type: ignore
+                from PyQt6.QtCore import Qt
+
+                # Handle Ctrl+C in the window
+                if (
+                    event.modifiers() == Qt.KeyboardModifier.ControlModifier
+                    and event.key() == Qt.Key.Key_C
+                ):
+                    print("\nCtrl+C pressed in window, shutting down gracefully...")
+                    app.quit()
+                else:
+                    super().keyPressEvent(event)
+
+        main_window = MainWindow()
+
+        # Create central widget with welcome message
+        central_widget = QWidget()
+        layout = QVBoxLayout(central_widget)
+
+        title_label = QLabel("GRIMOIRE Design Studio")
+        title_font = QFont()
+        title_font.setPointSize(24)
+        title_font.setBold(True)
+        title_label.setFont(title_font)
+        title_label.setStyleSheet("QLabel { color: #2c3e50; margin: 20px; }")
+
+        version_label = QLabel("Version 1.0.0")
+        version_label.setStyleSheet("QLabel { color: #7f8c8d; margin: 10px; }")
+
+        status_label = QLabel(
+            "Basic installation successful!\nPress Ctrl+C or close window to exit."
+        )
+        status_label.setStyleSheet("QLabel { color: #27ae60; margin: 10px; }")
+
+        layout.addWidget(title_label)
+        layout.addWidget(version_label)
+        layout.addWidget(status_label)
+        layout.addStretch()
+
+        main_window.setCentralWidget(central_widget)
+
+        # Show the window
+        main_window.show()
+
+        # Connect window closing to app quit for clean shutdown
+        def close_handler() -> None:
+            app.quit()
+
+        main_window.destroyed.connect(close_handler)
+
+        # Run the application
+        return app.exec()
+
+    except ImportError as e:
+        print(f"Error: Missing required dependencies: {e}", file=sys.stderr)
+        print("Please install PyQt6 and other required packages", file=sys.stderr)
+        return 1
+    except KeyboardInterrupt:
+        print("\nShutdown requested by user")
+        return 0
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
