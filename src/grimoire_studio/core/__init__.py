@@ -6,5 +6,6 @@ including configuration management, project handling, and validation.
 """
 
 from .config import AppConfig
+from .project_manager import ProjectManager
 
-__all__ = ["AppConfig"]
+__all__ = ["AppConfig", "ProjectManager"]
