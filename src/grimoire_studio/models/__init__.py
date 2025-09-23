@@ -19,6 +19,7 @@ from .grimoire_definitions import (
     TableDefinition,
     ValidationRule,
 )
+from .project import GrimoireProject
 
 __all__ = [
     "AttributeDefinition",
@@ -32,6 +33,7 @@ __all__ = [
     "FlowStep",
     "FlowVariable",
     "GrimoireDefinition",
+    "GrimoireProject",
     "ModelDefinition",
     "PromptDefinition",
     "SourceDefinition",
