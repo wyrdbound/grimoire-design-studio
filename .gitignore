@@ -154,3 +154,7 @@ Thumbs.db
 *.log
 logs/
 .grimoire_studio/
+
+# Sym-links
+spec
+systems
