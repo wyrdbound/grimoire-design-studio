@@ -338,7 +338,7 @@ class TestTableDefinition:
             "name": "Random Encounters",
             "description": "Table of random encounters",
             "version": 1,
-            "dice": "1d20",
+            "roll": "1d20",
             "entries": [
                 {"roll": "1-5", "result": "Goblin patrol"},
                 {"roll": "6-10", "result": "Wild animals"},
@@ -354,7 +354,7 @@ class TestTableDefinition:
         assert table.name == "Random Encounters"
         assert table.description == "Table of random encounters"
         assert table.version == 1
-        assert table.dice == "1d20"
+        assert table.roll == "1d20"
         assert len(table.entries) == 4
 
         # Check first entry
@@ -363,7 +363,7 @@ class TestTableDefinition:
         assert first_entry["result"] == "Goblin patrol"
 
     def test_table_without_dice(self):
-        """Test table definition without dice specification."""
+        """Test table definition without roll specification."""
         data = {
             "id": "simple_list",
             "kind": "table",
@@ -373,7 +373,7 @@ class TestTableDefinition:
 
         table = TableDefinition.from_dict(data)
 
-        assert table.dice is None
+        assert table.roll is None
         assert len(table.entries) == 2
 
 
@@ -414,8 +414,8 @@ class TestPromptDefinition:
             "name": "Character Description Generator",
             "description": "Generates character descriptions",
             "version": 1,
-            "template": "Generate a description for a character named {{ character.name }}",
-            "variables": {"character": {"type": "character", "required": True}},
+            "prompt_template": "Generate a description for a character named {{ character.name }}",
+            "llm": {"provider": "ollama", "model": "gemma2"},
         }
 
         prompt = PromptDefinition.from_dict(data)
@@ -426,17 +426,14 @@ class TestPromptDefinition:
         assert prompt.description == "Generates character descriptions"
         assert prompt.version == 1
         assert (
-            prompt.template
+            prompt.prompt_template
             == "Generate a description for a character named {{ character.name }}"
         )
-        assert len(prompt.variables) == 1
+        assert len(prompt.llm) == 2
 
-        # Check variable (variables is stored as dict)
-        assert len(prompt.variables) == 1
-        assert "character" in prompt.variables
-        variable = prompt.variables["character"]
-        assert variable["type"] == "character"
-        assert variable["required"] is True
+        # Check llm settings
+        assert prompt.llm["provider"] == "ollama"
+        assert prompt.llm["model"] == "gemma2"
 
 
 class TestAttributeDefinition:

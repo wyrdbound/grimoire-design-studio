@@ -21,3 +21,41 @@ Always remember the following points as you are working on this code base:
 9. Thread safety is critical - all public APIs must be thread-safe and work correctly in concurrent environments.
 
 10. Do not perform any git operations as the developer will handle those.
+
+## Cross-Platform Compatibility
+
+11. **Always use `pathlib.Path` for file and directory operations** - Never use string concatenation or os.path.join() for paths. Use `Path("/base") / "subdir" / "file.txt"` instead of `"/base/subdir/file.txt"`.
+
+12. **Handle file operations with proper resource management** - Always use context managers (`with` statements) for file operations. Close file handles explicitly on Windows by exiting the context before any file operations like deletion.
+
+13. **Use proper encoding for file operations** - Always specify `encoding="utf-8"` when reading/writing text files to ensure consistent behavior across platforms.
+
+14. **Handle Windows file locking gracefully** - When using temporary files, ensure file handles are closed before deletion. Use try/except blocks around file deletion operations to handle Windows-specific permission errors.
+
+15. **Test file operations with tempfile properly** - Use `tempfile.NamedTemporaryFile` with `delete=False`, capture the path outside the context manager, then handle cleanup with proper error handling for Windows compatibility.
+
+16. **Use os-independent path operations** - Never hardcode path separators (`/` or `\`). Let `pathlib.Path` handle platform differences automatically.
+
+Example of correct cross-platform file handling:
+```python
+from pathlib import Path
+import tempfile
+
+# Correct way to handle temporary files cross-platform
+with tempfile.NamedTemporaryFile(
+    mode="w", suffix=".yaml", delete=False, encoding="utf-8"
+) as temp_file:
+    temp_file.write(content)
+    temp_file.flush()
+    temp_file_path = Path(temp_file.name)
+
+try:
+    # Use the file
+    process_file(temp_file_path)
+finally:
+    try:
+        temp_file_path.unlink()
+    except (OSError, PermissionError):
+        # On Windows, sometimes the file is still locked
+        pass
+```

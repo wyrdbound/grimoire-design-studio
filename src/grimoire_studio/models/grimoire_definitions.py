@@ -488,7 +488,8 @@ class TableDefinition:
         name: Human-readable name for the table
         description: Detailed description of the table
         version: Version number for the table definition
-        dice: Dice expression for rolling on the table
+        roll: Dice expression for rolling on the table
+        entry_type: Type of entries returned by this table (defaults to "str")
         entries: List of table entries with ranges and values
     """
 
@@ -497,7 +498,8 @@ class TableDefinition:
     name: str
     description: str | None = None
     version: int = 1
-    dice: str | None = None
+    roll: str | None = None
+    entry_type: str = "str"
     entries: list[dict[str, Any]] = field(default_factory=list)
 
     @classmethod
@@ -509,7 +511,8 @@ class TableDefinition:
             name=data["name"],
             description=data.get("description"),
             version=data.get("version", 1),
-            dice=data.get("dice"),
+            roll=data.get("roll"),
+            entry_type=data.get("entry_type", "str"),
             entries=data.get("entries", []),
         )
 
@@ -524,11 +527,12 @@ class SourceDefinition:
         name: Human-readable name for the source
         description: Detailed description of the source
         version: Version number for the source definition
+        edition: Edition information (optional)
         type: Source type (book, website, manual, etc.)
         author: Author information (optional)
         publisher: Publisher information (optional)
         year: Publication year (optional)
-        url: URL reference (optional)
+        source_url: URL reference (optional)
         isbn: ISBN number (optional)
     """
 
@@ -537,11 +541,12 @@ class SourceDefinition:
     name: str
     description: str | None = None
     version: int = 1
+    edition: str | None = None
     type: str | None = None
     author: str | None = None
     publisher: str | None = None
     year: int | None = None
-    url: str | None = None
+    source_url: str | None = None
     isbn: str | None = None
 
     @classmethod
@@ -553,11 +558,12 @@ class SourceDefinition:
             name=data["name"],
             description=data.get("description"),
             version=data.get("version", 1),
+            edition=data.get("edition"),
             type=data.get("type"),
             author=data.get("author"),
             publisher=data.get("publisher"),
             year=data.get("year"),
-            url=data.get("url"),
+            source_url=data.get("source_url"),
             isbn=data.get("isbn"),
         )
 
@@ -572,9 +578,8 @@ class PromptDefinition:
         name: Human-readable name for the prompt
         description: Detailed description of the prompt
         version: Version number for the prompt definition
-        template: Prompt template with variable substitution
-        variables: Variable definitions for the template
-        llm_settings: Default LLM configuration (optional)
+        prompt_template: Prompt template with variable substitution
+        llm: Default LLM configuration (optional)
     """
 
     id: str
@@ -582,9 +587,8 @@ class PromptDefinition:
     name: str
     description: str | None = None
     version: int = 1
-    template: str = ""
-    variables: dict[str, Any] = field(default_factory=dict)
-    llm_settings: dict[str, Any] = field(default_factory=dict)
+    prompt_template: str = ""
+    llm: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> PromptDefinition:
@@ -595,9 +599,8 @@ class PromptDefinition:
             name=data["name"],
             description=data.get("description"),
             version=data.get("version", 1),
-            template=data.get("template", ""),
-            variables=data.get("variables", {}),
-            llm_settings=data.get("llm_settings", {}),
+            prompt_template=data.get("prompt_template", ""),
+            llm=data.get("llm", {}),
         )
 
 
