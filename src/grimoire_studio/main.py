@@ -14,6 +14,8 @@ if TYPE_CHECKING:
     from PyQt6.QtCore import QCoreApplication
     from PyQt6.QtWidgets import QApplication
 
+from .core.config import get_config
+
 
 def setup_logging(debug: bool = False) -> None:
     """Set up comprehensive logging configuration with file rotation."""
@@ -105,6 +107,29 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--logs", action="store_true", help="Show log directory path and exit"
     )
+    parser.add_argument(
+        "--config-reset",
+        action="store_true",
+        help="Reset configuration to defaults and exit",
+    )
+    parser.add_argument(
+        "--config-export",
+        metavar="FILE",
+        help="Export current configuration to file and exit",
+    )
+    parser.add_argument(
+        "--config-import", metavar="FILE", help="Import configuration from file"
+    )
+    parser.add_argument(
+        "--no-restore-session",
+        action="store_true",
+        help="Don't restore previous session on startup",
+    )
+    parser.add_argument(
+        "--config-show",
+        action="store_true",
+        help="Display current configuration and exit",
+    )
     return parser.parse_args()
 
 
@@ -135,6 +160,46 @@ def setup_signal_handlers(app: Union["QApplication", "QCoreApplication"]) -> Non
 def main() -> int:
     """Main application entry point."""
     args = parse_arguments()
+
+    # Handle configuration commands before setting up logging
+    if args.config_reset:
+        try:
+            config = get_config()
+            config.reset_to_defaults()
+            print("[SUCCESS] Configuration reset to defaults")
+            return 0
+        except Exception as e:
+            print(f"[ERROR] Failed to reset configuration: {e}", file=sys.stderr)
+            return 1
+
+    if args.config_export:
+        try:
+            config = get_config()
+            config.export_config(args.config_export)
+            print(f"[SUCCESS] Configuration exported to {args.config_export}")
+            return 0
+        except Exception as e:
+            print(f"[ERROR] Failed to export configuration: {e}", file=sys.stderr)
+            return 1
+
+    if args.config_import:
+        try:
+            config = get_config()
+            config.import_config(args.config_import)
+            print(f"[SUCCESS] Configuration imported from {args.config_import}")
+            return 0
+        except Exception as e:
+            print(f"[ERROR] Failed to import configuration: {e}", file=sys.stderr)
+            return 1
+
+    if args.config_show:
+        try:
+            config = get_config()
+            print(config.display_config())
+            return 0
+        except Exception as e:
+            print(f"[ERROR] Failed to display configuration: {e}", file=sys.stderr)
+            return 1
 
     # Handle --logs flag before setting up logging
     if args.logs:
@@ -206,7 +271,28 @@ def main() -> int:
                 print("[TEST] Skipping file manager open (detected test environment)")
         return 0
 
-    setup_logging(debug=args.debug)
+    # Initialize configuration system
+    config = get_config()
+
+    # Apply configuration imports if requested
+    if args.config_import:
+        try:
+            config.import_config(args.config_import)
+            print(f"[SUCCESS] Configuration imported from {args.config_import}")
+        except Exception as e:
+            print(f"[WARNING] Failed to import configuration: {e}", file=sys.stderr)
+
+    # Override debug setting from command line
+    if args.debug:
+        config.set("logging/level", "DEBUG")
+
+    # Set session restore preference
+    if args.no_restore_session:
+        config.set("app/restore_session", False)
+
+    # Setup logging using configuration
+    debug_mode = config.get("logging/level", "INFO").upper() == "DEBUG"
+    setup_logging(debug=debug_mode)
 
     try:
         # Import Qt after logging is set up
@@ -258,12 +344,23 @@ def main() -> int:
             # Set up signal handlers for CTRL+C
             setup_signal_handlers(app)
 
-            # Create a custom main window that handles CTRL+C
+            # Create a custom main window that handles CTRL+C and uses configuration
             class MainWindow(QMainWindow):
                 def __init__(self) -> None:
                     super().__init__()
+                    self.config = config
                     self.setWindowTitle("GRIMOIRE Design Studio v1.0.0")
-                    self.resize(800, 600)
+
+                    # Apply window size from configuration
+                    window_size = self.config.get("window/size")
+                    if window_size:
+                        self.resize(window_size)
+                    else:
+                        self.resize(800, 600)
+
+                    # Apply maximized state
+                    if self.config.get("window/maximized", False):
+                        self.showMaximized()
 
                 def keyPressEvent(self, event) -> None:  # type: ignore
                     from PyQt6.QtCore import Qt
@@ -277,6 +374,41 @@ def main() -> int:
                         app.quit()
                     else:
                         super().keyPressEvent(event)
+
+                def closeEvent(self, event) -> None:  # type: ignore
+                    """Save window state before closing."""
+                    try:
+                        # Save window state to configuration
+                        self.config.set("window/size", self.size())
+                        self.config.set("window/maximized", self.isMaximized())
+                        if not self.isMaximized():
+                            self.config.set("window/position", self.pos())
+
+                        # Force save configuration
+                        self.config.save_settings()
+
+                        # Check if user wants confirmation before exit
+                        if self.config.get("app/confirm_exit", True):
+                            from PyQt6.QtWidgets import QMessageBox
+
+                            reply = QMessageBox.question(
+                                self,
+                                "Confirm Exit",
+                                "Are you sure you want to exit GRIMOIRE Design Studio?",
+                                QMessageBox.StandardButton.Yes
+                                | QMessageBox.StandardButton.No,
+                                QMessageBox.StandardButton.No,
+                            )
+                            if reply == QMessageBox.StandardButton.Yes:
+                                event.accept()
+                            else:
+                                event.ignore()
+                        else:
+                            event.accept()
+                    except Exception as e:
+                        # Don't prevent exit due to configuration errors
+                        print(f"Warning: Error saving window state: {e}")
+                        event.accept()
 
             main_window = MainWindow()
 
@@ -299,9 +431,19 @@ def main() -> int:
             )
             status_label.setStyleSheet("QLabel { color: #27ae60; margin: 10px; }")
 
+            # Add configuration info
+            config_label = QLabel(
+                f"Configuration loaded: {len(config.get_all_keys())} settings\n"
+                f"Recent projects: {len(config.get_recent_projects())}"
+            )
+            config_label.setStyleSheet(
+                "QLabel { color: #3498db; margin: 10px; font-size: 10px; }"
+            )
+
             layout.addWidget(title_label)
             layout.addWidget(version_label)
             layout.addWidget(status_label)
+            layout.addWidget(config_label)
             layout.addStretch()
 
             main_window.setCentralWidget(central_widget)
