@@ -19,3 +19,5 @@ Always remember the following points as you are working on this code base:
 8. Avoid making lines longer than 88 characters (E501 ruff check).
 
 9. Thread safety is critical - all public APIs must be thread-safe and work correctly in concurrent environments.
+
+10. Do not perform any git operations as the developer will handle those.
