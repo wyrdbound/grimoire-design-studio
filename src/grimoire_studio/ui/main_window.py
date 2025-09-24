@@ -25,6 +25,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ..core.config import get_config
+from .components.project_browser import ProjectBrowser
 
 logger = get_logger(__name__)
 
@@ -254,14 +255,9 @@ class MainWindow(QMainWindow):
         self._main_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.setCentralWidget(self._main_splitter)
 
-        # Left panel: Project Browser (placeholder)
-        self._project_browser_widget = self._create_placeholder_panel(
-            "Project Browser",
-            "Project files and structure will appear here.\n"
-            "Use File > New Project to create a project.\n"
-            "Use File > Open Project to open an existing project.",
-        )
-        self._main_splitter.addWidget(self._project_browser_widget)
+        # Left panel: Project Browser
+        self._project_browser = ProjectBrowser()
+        self._main_splitter.addWidget(self._project_browser)
 
         # Center panel: Editor Area with vertical splitter for editor and output
         self._editor_splitter = QSplitter(Qt.Orientation.Vertical)
@@ -432,6 +428,11 @@ class MainWindow(QMainWindow):
 
     def _connect_signals(self) -> None:
         """Connect internal signals and slots."""
+        # Connect project browser signals
+        self._project_browser.file_selected.connect(self._on_file_selected)
+        self._project_browser.file_opened.connect(self._on_file_opened)
+        self._project_browser.project_changed.connect(self._on_project_changed)
+
         # Connect splitter moved signals to save state
         self._main_splitter.splitterMoved.connect(
             lambda: self._save_splitter_state("main_horizontal", self._main_splitter)
@@ -491,9 +492,11 @@ class MainWindow(QMainWindow):
             project_path: Path to the project directory
         """
         self._logger.info(f"Opening project: {project_path}")
-        # TODO: Implement actual project loading
-        self.project_opened.emit(project_path)
-        self.set_status(f"Opened project: {Path(project_path).name}")
+        try:
+            self.load_project(project_path)
+        except Exception as e:
+            self._logger.error(f"Failed to open project {project_path}: {e}")
+            self.set_status(f"Error opening project: {e}")
 
     def _on_save(self) -> None:
         """Handle save action."""
@@ -591,6 +594,89 @@ class MainWindow(QMainWindow):
         """
         self._action_save.setEnabled(enabled)
         self._action_save_all.setEnabled(enabled)
+
+    # Project browser signal handlers
+    def _on_file_selected(self, file_path: str) -> None:
+        """
+        Handle file selection from project browser.
+
+        Args:
+            file_path: Path of the selected file
+        """
+        self._logger.debug(f"File selected: {file_path}")
+        self.set_current_file(file_path)
+
+        # Enable file actions for supported file types
+        path_obj = Path(file_path)
+        is_editable = path_obj.suffix.lower() in [
+            ".yaml",
+            ".yml",
+            ".md",
+            ".txt",
+            ".json",
+        ]
+        self.enable_file_actions(is_editable)
+
+    def _on_file_opened(self, file_path: str) -> None:
+        """
+        Handle file opening request from project browser.
+
+        Args:
+            file_path: Path of the file to open
+        """
+        self._logger.info(f"File opened: {file_path}")
+
+        # Emit the main window signal for file opening
+        self.file_opened.emit(file_path)
+
+        # Update status and UI
+        self.set_current_file(file_path)
+        self.set_status(f"Opened: {Path(file_path).name}")
+
+        # Enable relevant actions
+        self.enable_file_actions(True)
+
+    def _on_project_changed(self) -> None:
+        """Handle project structure changes from project browser."""
+        self._logger.debug("Project structure changed")
+
+        # Check if we have a current project
+        current_project = self._project_browser.get_current_project()
+        if current_project:
+            # Enable project actions
+            self.enable_project_actions(True)
+            self.set_status(f"Project: {current_project.project_name}")
+
+            # Add to recent projects
+            self._config.add_recent_project(str(current_project.project_path))
+            self._update_recent_projects_menu()
+
+            # Emit main window project opened signal
+            self.project_opened.emit(str(current_project.project_path))
+        else:
+            # No project loaded
+            self.enable_project_actions(False)
+            self.enable_file_actions(False)
+            self.set_status("No project loaded")
+            self.set_current_file(None)
+
+    def load_project(self, project_path: str) -> None:
+        """
+        Load a project into the project browser.
+
+        Args:
+            project_path: Path to the project directory
+
+        Raises:
+            RuntimeError: If project cannot be loaded
+        """
+        try:
+            self._project_browser.load_project(project_path)
+            self._logger.info(f"Project loaded in main window: {project_path}")
+        except Exception as e:
+            self._logger.error(f"Failed to load project in main window: {e}")
+            self.set_status(f"Error loading project: {e}")
+            raise
 
     def closeEvent(self, event) -> None:  # type: ignore
         """
