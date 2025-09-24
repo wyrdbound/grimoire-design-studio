@@ -57,7 +57,7 @@ jobs:
           grimoire-studio --version
           python -c "import grimoire_studio; print(f'Version: {grimoire_studio.__version__}')"
 
-      - name: Run tests with pytest
+      - name: Run tests with pytest (including UI tests)
         env:
           QT_QPA_PLATFORM: minimal
         run: |
@@ -106,11 +106,11 @@ jobs:
           grimoire-studio --version
           python -c "import grimoire_studio; print(f'Version: {grimoire_studio.__version__}')"
 
-      - name: Run tests with pytest
+      - name: Run tests with pytest (excluding UI tests)
         env:
           QT_QPA_PLATFORM: minimal
         run: |
-          pytest --cov=grimoire_studio --cov-report=xml --cov-report=term-missing -v
+          pytest --cov=grimoire_studio --cov-report=xml --cov-report=term-missing -v -m "not ui"
 
   test-macos:
     runs-on: macos-latest
@@ -146,7 +146,7 @@ jobs:
           grimoire-studio --version
           python -c "import grimoire_studio; print(f'Version: {grimoire_studio.__version__}')"
 
-      - name: Run integration tests (macOS)
+      - name: Run integration tests (macOS, excluding UI tests)
         env:
           QT_QPA_PLATFORM: minimal
-        run: pytest tests/test_integration.py -v
+        run: pytest tests/test_integration.py -v -m "not ui"

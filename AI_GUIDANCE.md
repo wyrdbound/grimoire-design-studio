@@ -14,13 +14,17 @@ Always remember the following points as you are working on this code base:
 
 6. Do NOT make bandaid fixes that break clean architecture guidelines. Always respect the architectural boundaries.
 
-7. After all code changes, run `source .venv/bin/activate && ruff format src/ tests/ && ruff check src/ tests/ --fix && mypy src/` to ensure code quality is retained in an iterative manner.
+7. After all code changes, run `source .venv/bin/activate && ruff format src/ tests/ && ruff check src/ tests/ --fix && mypy src/ && bandit -r src/` to ensure code quality is retained in an iterative manner.
 
 8. Avoid making lines longer than 88 characters (E501 ruff check).
 
 9. Thread safety is critical - all public APIs must be thread-safe and work correctly in concurrent environments.
 
 10. Do not perform any git operations as the developer will handle those.
+
+## Testing Strategy
+
+See [TESTING.md](TESTING.md) for full details.
 
 ## Cross-Platform Compatibility
 
@@ -37,6 +41,7 @@ Always remember the following points as you are working on this code base:
 16. **Use os-independent path operations** - Never hardcode path separators (`/` or `\`). Let `pathlib.Path` handle platform differences automatically.
 
 Example of correct cross-platform file handling:
+
 ```python
 from pathlib import Path
 import tempfile
