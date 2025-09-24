@@ -325,14 +325,10 @@ def main() -> int:
             return 0
         else:
             # Use full GUI application for interactive mode
-            from PyQt6.QtGui import QFont
-            from PyQt6.QtWidgets import (
-                QApplication,
-                QLabel,
-                QMainWindow,
-                QVBoxLayout,
-                QWidget,
-            )
+            from PyQt6.QtWidgets import QApplication
+
+            # Import our new main window
+            from .ui.main_window import MainWindow
 
             # Create the Qt application
             app = QApplication(sys.argv)
@@ -344,118 +340,11 @@ def main() -> int:
             # Set up signal handlers for CTRL+C
             setup_signal_handlers(app)
 
-            # Create a custom main window that handles CTRL+C and uses configuration
-            class MainWindow(QMainWindow):
-                def __init__(self) -> None:
-                    super().__init__()
-                    self.config = config
-                    self.setWindowTitle("GRIMOIRE Design Studio v1.0.0")
-
-                    # Apply window size from configuration
-                    window_size = self.config.get("window/size")
-                    if window_size:
-                        self.resize(window_size)
-                    else:
-                        self.resize(800, 600)
-
-                    # Apply maximized state
-                    if self.config.get("window/maximized", False):
-                        self.showMaximized()
-
-                def keyPressEvent(self, event) -> None:  # type: ignore
-                    from PyQt6.QtCore import Qt
-
-                    # Handle Ctrl+C in the window
-                    if (
-                        event.modifiers() == Qt.KeyboardModifier.ControlModifier
-                        and event.key() == Qt.Key.Key_C
-                    ):
-                        print("\nCtrl+C pressed in window, shutting down gracefully...")
-                        app.quit()
-                    else:
-                        super().keyPressEvent(event)
-
-                def closeEvent(self, event) -> None:  # type: ignore
-                    """Save window state before closing."""
-                    try:
-                        # Save window state to configuration
-                        self.config.set("window/size", self.size())
-                        self.config.set("window/maximized", self.isMaximized())
-                        if not self.isMaximized():
-                            self.config.set("window/position", self.pos())
-
-                        # Force save configuration
-                        self.config.save_settings()
-
-                        # Check if user wants confirmation before exit
-                        if self.config.get("app/confirm_exit", True):
-                            from PyQt6.QtWidgets import QMessageBox
-
-                            reply = QMessageBox.question(
-                                self,
-                                "Confirm Exit",
-                                "Are you sure you want to exit GRIMOIRE Design Studio?",
-                                QMessageBox.StandardButton.Yes
-                                | QMessageBox.StandardButton.No,
-                                QMessageBox.StandardButton.No,
-                            )
-                            if reply == QMessageBox.StandardButton.Yes:
-                                event.accept()
-                            else:
-                                event.ignore()
-                        else:
-                            event.accept()
-                    except Exception as e:
-                        # Don't prevent exit due to configuration errors
-                        print(f"Warning: Error saving window state: {e}")
-                        event.accept()
-
+            # Create the main window
             main_window = MainWindow()
-
-            # Create central widget with welcome message
-            central_widget = QWidget()
-            layout = QVBoxLayout(central_widget)
-
-            title_label = QLabel("GRIMOIRE Design Studio")
-            title_font = QFont()
-            title_font.setPointSize(24)
-            title_font.setBold(True)
-            title_label.setFont(title_font)
-            title_label.setStyleSheet("QLabel { color: #2c3e50; margin: 20px; }")
-
-            version_label = QLabel("Version 1.0.0")
-            version_label.setStyleSheet("QLabel { color: #7f8c8d; margin: 10px; }")
-
-            status_label = QLabel(
-                "Basic installation successful!\nPress Ctrl+C or close window to exit."
-            )
-            status_label.setStyleSheet("QLabel { color: #27ae60; margin: 10px; }")
-
-            # Add configuration info
-            config_label = QLabel(
-                f"Configuration loaded: {len(config.get_all_keys())} settings\n"
-                f"Recent projects: {len(config.get_recent_projects())}"
-            )
-            config_label.setStyleSheet(
-                "QLabel { color: #3498db; margin: 10px; font-size: 10px; }"
-            )
-
-            layout.addWidget(title_label)
-            layout.addWidget(version_label)
-            layout.addWidget(status_label)
-            layout.addWidget(config_label)
-            layout.addStretch()
-
-            main_window.setCentralWidget(central_widget)
 
             # Show the window
             main_window.show()
-
-            # Connect window closing to app quit for clean shutdown
-            def close_handler() -> None:
-                app.quit()
-
-            main_window.destroyed.connect(close_handler)
 
             # Run the application
             return app.exec()
