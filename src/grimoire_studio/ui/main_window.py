@@ -6,7 +6,7 @@ interface with a three-panel layout for project browsing, editing, and propertie
 """
 
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from grimoire_logging import get_logger
 from PyQt6.QtCore import QPoint, QSize, Qt, pyqtSignal
@@ -25,6 +25,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ..core.config import get_config
+from .components.output_console import OutputConsole
 from .components.project_browser import ProjectBrowser
 
 logger = get_logger(__name__)
@@ -271,15 +272,9 @@ class MainWindow(QMainWindow):
         )
         self._editor_splitter.addWidget(self._editor_widget)
 
-        # Output console (placeholder)
-        self._output_widget = self._create_placeholder_panel(
-            "Output Console",
-            "Validation results and execution logs will appear here.\n"
-            "• Validation tab: YAML syntax and GRIMOIRE structure errors\n"
-            "• Execution tab: Flow execution results and logs\n"
-            "• Logs tab: Application debug information",
-        )
-        self._editor_splitter.addWidget(self._output_widget)
+        # Output console
+        self._output_console = OutputConsole()
+        self._editor_splitter.addWidget(self._output_console)
 
         self._main_splitter.addWidget(self._editor_splitter)
 
@@ -432,6 +427,9 @@ class MainWindow(QMainWindow):
         self._project_browser.file_selected.connect(self._on_file_selected)
         self._project_browser.file_opened.connect(self._on_file_opened)
         self._project_browser.project_changed.connect(self._on_project_changed)
+
+        # Connect output console signals
+        self._output_console.content_added.connect(self._on_console_content_added)
 
         # Connect splitter moved signals to save state
         self._main_splitter.splitterMoved.connect(
@@ -677,6 +675,80 @@ class MainWindow(QMainWindow):
             self._logger.error(f"Failed to load project in main window: {e}")
             self.set_status(f"Error loading project: {e}")
             raise
+
+    def _on_console_content_added(self, tab_name: str) -> None:
+        """
+        Handle new content added to the output console.
+
+        Args:
+            tab_name: Name of the tab that received new content
+        """
+        self._logger.debug(f"New content added to {tab_name} tab")
+
+    # Output console integration methods
+
+    def display_validation_results(
+        self, results: list[dict[str, Any]], auto_switch: bool = True
+    ) -> None:
+        """
+        Display validation results in the output console.
+
+        Args:
+            results: List of validation result dictionaries
+            auto_switch: Whether to automatically switch to validation tab
+        """
+        self._output_console.display_validation_results(results, auto_switch)
+        if results:
+            # Update status based on validation results
+            error_count = sum(1 for r in results if r.get("level") == "error")
+            warning_count = sum(1 for r in results if r.get("level") == "warning")
+
+            if error_count > 0:
+                self.set_validation_status(
+                    f"{error_count} errors, {warning_count} warnings"
+                )
+            elif warning_count > 0:
+                self.set_validation_status(f"{warning_count} warnings")
+            else:
+                self.set_validation_status("Valid")
+
+    def display_execution_output(
+        self, message: str, level: str = "info", auto_switch: bool = True
+    ) -> None:
+        """
+        Display execution output in the output console.
+
+        Args:
+            message: The execution message
+            level: Message level
+            auto_switch: Whether to automatically switch to execution tab
+        """
+        self._output_console.display_execution_output(message, level, auto_switch)
+
+    def clear_console(self, tab: Optional[str] = None) -> None:
+        """
+        Clear the output console.
+
+        Args:
+            tab: Specific tab to clear ("validation", "execution", "logs") or None for all
+        """
+        if tab == "validation":
+            self._output_console.clear_validation()
+        elif tab == "execution":
+            self._output_console.clear_execution()
+        elif tab == "logs":
+            self._output_console.clear_logs()
+        else:
+            self._output_console.clear_all()
+
+    def get_output_console(self) -> OutputConsole:
+        """
+        Get the output console instance.
+
+        Returns:
+            The OutputConsole instance
+        """
+        return self._output_console
 
     def closeEvent(self, event) -> None:  # type: ignore
         """
