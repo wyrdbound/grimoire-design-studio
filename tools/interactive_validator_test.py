@@ -96,28 +96,37 @@ def validate_system_files(validator: YamlValidator):
 
     try:
         print("⏳ Scanning for YAML files...")
-        
+
         # Only scan official GRIMOIRE directories (not fixtures or other non-spec directories)
-        official_dirs = ["models", "flows", "compendiums", "tables", "sources", "prompts"]
+        official_dirs = [
+            "models",
+            "flows",
+            "compendiums",
+            "tables",
+            "sources",
+            "prompts",
+        ]
         yaml_files = []
-        
+
         # Add system.yaml
         if (system_path / "system.yaml").exists():
             yaml_files.append(system_path / "system.yaml")
-        
+
         # Add files from official directories only
         for dir_name in official_dirs:
             dir_path = system_path / dir_name
             if dir_path.exists():
                 yaml_files.extend(dir_path.rglob("*.yaml"))
                 yaml_files.extend(dir_path.rglob("*.yml"))
-        
+
         if not yaml_files:
-            print(f"❌ No YAML files found in official GRIMOIRE directories: {system_path}")
+            print(
+                f"❌ No YAML files found in official GRIMOIRE directories: {system_path}"
+            )
             return
 
         print(f"📋 Found {len(yaml_files)} YAML files in official directories")
-        
+
         all_results = []
         for yaml_file in yaml_files:
             print(f"🔍 Validating: {yaml_file.relative_to(system_path)}")
@@ -153,16 +162,16 @@ def validate_system_complete(validator: YamlValidator, pm: ProjectManager):
 
     try:
         print("⏳ Loading and validating complete system...")
-        
+
         # First, load the system
         complete_system = pm.load_system(system_path)
-        
+
         # Then validate with cross-references
         results = validator.validate_system(system_path, complete_system)
 
         print(f"\n✅ Complete system validation finished")
         print(f"🎲 System: {complete_system.system.name}")
-        
+
         # Show component counts
         components = [
             ("Models", complete_system.models),
@@ -177,11 +186,16 @@ def validate_system_complete(validator: YamlValidator, pm: ProjectManager):
         for name, component_dict in components:
             count = len(component_dict)
             icon = (
-                "📋" if name == "Models"
-                else "🔄" if name == "Flows"
-                else "📚" if name == "Compendiums"
-                else "🎯" if name == "Tables"
-                else "📄" if name == "Sources"
+                "📋"
+                if name == "Models"
+                else "🔄"
+                if name == "Flows"
+                else "📚"
+                if name == "Compendiums"
+                else "🎯"
+                if name == "Tables"
+                else "📄"
+                if name == "Sources"
                 else "💭"
             )
             print(f"   {icon} {name}: {count}")
@@ -219,7 +233,7 @@ def display_validation_results(results, group_by_file=False):
     # Show details if requested
     if input("\n❓ Show detailed validation results? (y/N): ").lower().startswith("y"):
         print("\n" + "=" * 60)
-        
+
         if group_by_file:
             # Group results by file
             file_results = {}
@@ -240,7 +254,10 @@ def display_validation_results(results, group_by_file=False):
                 print(f"\n{i}. {result}")
 
     # Show actionable summary
-    critical_and_errors = severity_counts[ValidationSeverity.CRITICAL] + severity_counts[ValidationSeverity.ERROR]
+    critical_and_errors = (
+        severity_counts[ValidationSeverity.CRITICAL]
+        + severity_counts[ValidationSeverity.ERROR]
+    )
     if critical_and_errors > 0:
         print(f"\n⚠️  Found {critical_and_errors} issues that need attention!")
         print("   Please review and fix errors before proceeding.")
