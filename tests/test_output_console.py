@@ -258,7 +258,7 @@ class TestOutputConsoleBusinessLogic:
         """Test that console font is properly configured."""
         font = output_console._get_console_font()
         assert font.styleHint() == font.StyleHint.Monospace
-        assert font.pointSize() == 9
+        assert font.pointSize() == 11  # Updated from 9 to 11 for better readability
 
     def test_timestamp_format(self, output_console):
         """Test that timestamps are included in messages."""

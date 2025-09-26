@@ -26,6 +26,7 @@ from PyQt6.QtWidgets import (
 
 from ...core.validator import YamlValidator
 from ..components.output_console import OutputConsole
+from ..components.yaml_highlighter import YamlSyntaxHighlighter
 
 logger = get_logger(__name__)
 
@@ -94,6 +95,10 @@ class YamlEditorView(QWidget):
         self._text_edit.setTabStopDistance(20)  # 4-space tabs
         self._text_edit.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
 
+        # Set up syntax highlighting
+        self._highlighter = YamlSyntaxHighlighter(self._text_edit.document())
+        self._highlighter.set_font(self._get_editor_font())
+
         # Connect text change signal
         self._text_edit.textChanged.connect(self._on_text_changed)
 
@@ -142,7 +147,7 @@ class YamlEditorView(QWidget):
             if not font.exactMatch():
                 font = QFont("Courier New")
 
-        font.setPointSize(10)
+        font.setPointSize(12)  # Increased from 10 to 12 for better readability
         font.setStyleHint(QFont.StyleHint.Monospace)
         return font
 
@@ -208,6 +213,9 @@ class YamlEditorView(QWidget):
         content = self._text_edit.toPlainText()
         results = self._validator.validate_yaml_syntax(content, self._file_path)
 
+        # Clear previous error highlighting
+        self._highlighter.clear_error_highlights()
+
         # If we have an output console, display results
         if self._output_console:
             formatted_results = []
@@ -225,6 +233,12 @@ class YamlEditorView(QWidget):
                 self._output_console.display_validation_results(
                     formatted_results, auto_switch=False
                 )
+
+        # Highlight validation errors in the editor
+        for result in results:
+            if result.line_number is not None and result.line_number > 0:
+                # Convert to 0-based line number for highlighter
+                self._highlighter.highlight_error(result.line_number - 1)
 
         # Emit validation signal
         self.validation_requested.emit(content, self._file_path)
@@ -379,6 +393,29 @@ class YamlEditorView(QWidget):
             The current file path or None if no file is loaded
         """
         return self._file_path
+
+    def set_color_scheme(self, scheme_name: str) -> None:
+        """
+        Set the syntax highlighting color scheme.
+
+        Args:
+            scheme_name: Name of the Pygments color scheme to use
+        """
+        self._highlighter.set_color_scheme(scheme_name)
+        logger.debug(f"Color scheme set to: {scheme_name}")
+
+    def set_font_size(self, size: int) -> None:
+        """
+        Set the editor font size.
+
+        Args:
+            size: Font size in points
+        """
+        current_font = self._text_edit.font()
+        current_font.setPointSize(size)
+        self._text_edit.setFont(current_font)
+        self._highlighter.set_font(current_font)
+        logger.debug(f"Editor font size set to: {size}pt")
 
     def show_find_dialog(self) -> None:
         """Show the find dialog."""
