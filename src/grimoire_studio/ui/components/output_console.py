@@ -62,14 +62,16 @@ class OutputConsole(QWidget):
             parent: Parent widget (optional)
         """
         super().__init__(parent)
-        self._logger = get_logger(__name__)
+        # Use a separate logger for OutputConsole's internal logging to avoid circular references
+        self._logger = get_logger("grimoire_studio.ui.internal")
 
         # Tab indices
         self._validation_tab_index = 0
         self._execution_tab_index = 1
         self._logs_tab_index = 2
 
-        # Log filtering
+        # Log filtering - use INFO level by default to capture important messages
+        # Users can change this later if needed via set_log_level_filter()
         self._log_level_filter = logging.INFO
 
         # Setup UI
@@ -212,20 +214,17 @@ class OutputConsole(QWidget):
         return font
 
     def _setup_logging_handler(self) -> None:
-        """Set up logging handler to capture application logs."""
-        # Create custom log handler that sends logs to this console
-        self._log_handler = LogHandler(self)
+        """Set up logging handler to capture ALL application logs from the same logger that feeds the terminal."""
+        # Create simple log handler - no batching, immediate display
+        self._log_handler = LogHandler(self, use_batching=False)
         self._log_handler.setLevel(self._log_level_filter)
 
-        # Add handler to the grimoire_studio logger
-        studio_logger = logging.getLogger("grimoire_studio")
-        studio_logger.addHandler(self._log_handler)
-
-        # Also capture root logger messages at WARNING and above
+        # The main app sends all logs through the root logger, so we attach there
+        # to capture the same messages that appear in the terminal
         root_logger = logging.getLogger()
-        self._root_log_handler = LogHandler(self, prefix="[SYSTEM] ")
-        self._root_log_handler.setLevel(logging.WARNING)
-        root_logger.addHandler(self._root_log_handler)
+        root_logger.addHandler(self._log_handler)
+
+        self._logger.debug("OutputConsole handler attached to root logger")
 
     def _append_colored_text(
         self, text_edit: QTextEdit, text: str, color: QColor
@@ -483,12 +482,10 @@ class OutputConsole(QWidget):
     def closeEvent(self, event) -> None:  # type: ignore
         """Handle close event to clean up logging handlers."""
         try:
-            # Remove our custom log handlers
-            studio_logger = logging.getLogger("grimoire_studio")
-            studio_logger.removeHandler(self._log_handler)
-
-            root_logger = logging.getLogger()
-            root_logger.removeHandler(self._root_log_handler)
+            # Remove our handler from root logger
+            if hasattr(self, "_log_handler"):
+                root_logger = logging.getLogger()
+                root_logger.removeHandler(self._log_handler)
 
             self._logger.debug("OutputConsole logging handlers cleaned up")
         except Exception as e:
@@ -506,24 +503,34 @@ class LogHandler(logging.Handler):
     to the OutputConsole's logs tab for real-time monitoring.
     """
 
-    def __init__(self, output_console: OutputConsole, prefix: str = "") -> None:
+    def __init__(
+        self, output_console: OutputConsole, prefix: str = "", use_batching: bool = True
+    ) -> None:
         """
         Initialize the log handler.
 
         Args:
             output_console: The OutputConsole instance to send logs to
             prefix: Optional prefix to add to all log messages
+            use_batching: Whether to use timer-based batching (True) or immediate display (False)
         """
         super().__init__()
         self._output_console = output_console
         self._prefix = prefix
+        self._use_batching = use_batching
 
-        # Use a timer to batch log messages and avoid UI freezing
-        self._message_queue: list[tuple] = []
-        self._timer = QTimer()
-        self._timer.timeout.connect(self._flush_messages)
-        self._timer.setSingleShot(False)
-        self._timer.setInterval(100)  # Flush every 100ms
+        # Initialize attributes based on batching mode
+        self._message_queue: Optional[list[tuple]] = []
+        self._timer: Optional[QTimer] = None
+
+        if use_batching:
+            # Use a timer to batch log messages and avoid UI freezing
+            self._timer = QTimer()
+            self._timer.timeout.connect(self._flush_messages)
+            self._timer.setSingleShot(False)
+            self._timer.setInterval(100)  # Flush every 100ms
+        else:
+            self._message_queue = None
 
     def emit(self, record: logging.LogRecord) -> None:
         """
@@ -537,12 +544,18 @@ class LogHandler(logging.Handler):
             if self._prefix:
                 message = f"{self._prefix}{message}"
 
-            # Add to queue for batched processing
-            self._message_queue.append((message, record.levelno, record.name))
+            if self._use_batching and self._message_queue is not None:
+                # Add to queue for batched processing
+                self._message_queue.append((message, record.levelno, record.name))
 
-            # Start timer if not already running
-            if not self._timer.isActive():
-                self._timer.start()
+                # Start timer if not already running
+                if self._timer is not None and not self._timer.isActive():
+                    self._timer.start()
+            else:
+                # Display immediately
+                self._output_console.display_log_message(
+                    message, record.levelno, record.name
+                )
 
         except Exception as e:
             # Don't let logging errors crash the application
@@ -553,8 +566,12 @@ class LogHandler(logging.Handler):
 
     def _flush_messages(self) -> None:
         """Flush queued messages to the output console."""
+        if not self._use_batching or self._message_queue is None:
+            return
+
         if not self._message_queue:
-            self._timer.stop()
+            if self._timer is not None:
+                self._timer.stop()
             return
 
         # Process all queued messages
@@ -565,5 +582,10 @@ class LogHandler(logging.Handler):
             self._output_console.display_log_message(message, level, logger_name)
 
         # Stop timer if queue is empty
-        if not self._message_queue:
+        if not self._message_queue and self._timer is not None:
             self._timer.stop()
+
+    def flush_now(self) -> None:
+        """Manually flush any queued messages immediately."""
+        if self._use_batching:
+            self._flush_messages()

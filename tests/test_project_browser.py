@@ -195,7 +195,7 @@ name: Item
 
         # Verify project is loaded
         assert project_browser._current_project is not None
-        assert project_browser._current_project.project_name == "test_project"
+        assert project_browser._current_project.project_name == "Test System"
 
         # Verify tree is populated
         model = project_browser._tree_model
@@ -204,7 +204,7 @@ name: Item
         # Check project root item
         root_item = model.invisibleRootItem()
         project_item = root_item.child(0)
-        assert project_item.text() == "test_project"
+        assert project_item.text() == "Test System"
         assert project_item.data(Qt.ItemDataRole.UserRole) == project_path
 
     def test_load_project_nonexistent_path(self, project_browser):
@@ -276,7 +276,7 @@ name: Item
         # Get current project
         current = project_browser.get_current_project()
         assert current is not None
-        assert current.project_name == "test_project"
+        assert current.project_name == "Test System"
 
     def test_show_error_state(self, project_browser):
         """Test displaying error state."""

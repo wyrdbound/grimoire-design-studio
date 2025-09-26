@@ -131,20 +131,32 @@ class ProjectBrowser(QWidget):
             if not project_path_obj.exists():
                 raise RuntimeError(f"Project path does not exist: {project_path}")
 
-            # Create project wrapper - use directory name as project name
-            project_name = project_path_obj.name
-            system_id = f"{project_name.lower().replace(' ', '-')}-system"
+            # Verify project exists (has system.yaml)
+            system_file = project_path_obj / "system.yaml"
+            if not system_file.exists():
+                raise RuntimeError(
+                    f"Invalid GRIMOIRE project: missing system.yaml in {project_path}"
+                )
+
+            # Try to load the system to get proper project name and system ID
+            try:
+                system = self._project_manager.load_system(project_path)
+                project_name = system.system.name or project_path_obj.name
+                system_id = system.system.id
+            except Exception as load_error:
+                # Fallback to directory name if system loading fails
+                self._logger.warning(
+                    f"Could not load system metadata, using fallback: {load_error}"
+                )
+                project_name = project_path_obj.name
+                system_id = (
+                    f"{project_name.lower().replace(' ', '-').replace('_', '-')}-system"
+                )
 
             self._current_project = GrimoireProject(
                 project_path_obj, project_name, system_id
             )
             self._logger.info(f"Loading project: {self._current_project.project_name}")
-
-            # Verify project exists (has system.yaml)
-            if not self._current_project.exists():
-                raise RuntimeError(
-                    f"Invalid GRIMOIRE project: missing system.yaml in {project_path}"
-                )
 
             # Update tree view
             self._populate_tree()

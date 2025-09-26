@@ -14,7 +14,7 @@ from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget
 
 # Add the src directory to the path so we can import our modules
-sys.path.insert(0, str(Path(__file__).parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from grimoire_studio.ui.components.output_console import OutputConsole
 
@@ -86,19 +86,25 @@ class DemoWindow(QMainWindow):
             self.output_console.display_execution_output(
                 "Starting flow execution: character_creation", "info"
             )
-            QTimer.singleShot(500, lambda: self.output_console.display_execution_output(
-                "Rolling dice: 3d6 => [4, 2, 6] = 12", "success"
-            ))
-            QTimer.singleShot(1000, lambda: self.output_console.display_execution_output(
-                "Generated character: Elara the Wise", "success"
-            ))
+            QTimer.singleShot(
+                500,
+                lambda: self.output_console.display_execution_output(
+                    "Rolling dice: 3d6 => [4, 2, 6] = 12", "success"
+                ),
+            )
+            QTimer.singleShot(
+                1000,
+                lambda: self.output_console.display_execution_output(
+                    "Generated character: Elara the Wise", "success"
+                ),
+            )
 
         elif self.demo_step == 2:
             # Demo 3: Logging messages
             print("Demo Step 3: Application Logs")
             logger = logging.getLogger("demo.test")
             logger.setLevel(logging.DEBUG)
-            
+
             logger.info("Demo logger initialized")
             logger.warning("This is a warning message")
             logger.error("This is an error message")
@@ -108,15 +114,26 @@ class DemoWindow(QMainWindow):
             print("Demo Step 4: Tab Switching")
             self.output_console.switch_to_execution_tab()
             QTimer.singleShot(1000, lambda: self.output_console.switch_to_logs_tab())
-            QTimer.singleShot(2000, lambda: self.output_console.switch_to_validation_tab())
+            QTimer.singleShot(
+                2000, lambda: self.output_console.switch_to_validation_tab()
+            )
 
         elif self.demo_step == 4:
             # Demo 5: More complex validation
             print("Demo Step 5: Complex Validation Results")
             complex_results = [
-                {"level": "error", "message": "Circular dependency detected in flow chain"},
-                {"level": "error", "message": "Invalid model reference: 'NonExistentModel'"},
-                {"level": "warning", "message": "Unused table definition 'old_loot_table'"},
+                {
+                    "level": "error",
+                    "message": "Circular dependency detected in flow chain",
+                },
+                {
+                    "level": "error",
+                    "message": "Invalid model reference: 'NonExistentModel'",
+                },
+                {
+                    "level": "warning",
+                    "message": "Unused table definition 'old_loot_table'",
+                },
                 {"level": "info", "message": "Validation completed in 0.125 seconds"},
             ]
             self.output_console.display_validation_results(complex_results)
