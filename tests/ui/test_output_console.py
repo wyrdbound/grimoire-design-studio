@@ -137,10 +137,10 @@ class TestOutputConsoleUI:
         assert execution_font.styleHint() == execution_font.StyleHint.Monospace
         assert logs_font.styleHint() == logs_font.StyleHint.Monospace
 
-        # Check font size
-        assert validation_font.pointSize() == 9
-        assert execution_font.pointSize() == 9
-        assert logs_font.pointSize() == 9
+        # Check font size (updated from 9 to 11 for better readability)
+        assert validation_font.pointSize() == 11
+        assert execution_font.pointSize() == 11
+        assert logs_font.pointSize() == 11
 
     def test_content_added_signal_emission(self, output_console, qtbot):
         """Test that content_added signal is emitted on UI operations."""
