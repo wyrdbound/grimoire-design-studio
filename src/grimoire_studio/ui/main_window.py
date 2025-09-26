@@ -28,6 +28,7 @@ from ..core.config import get_config
 from .components.output_console import OutputConsole
 from .components.project_browser import ProjectBrowser
 from .dialogs.new_project import NewProjectDialog
+from .views.yaml_editor_view import YamlEditorView
 
 logger = get_logger(__name__)
 
@@ -67,6 +68,9 @@ class MainWindow(QMainWindow):
         super().__init__(parent)
         self._config = get_config()
         self._logger = get_logger(__name__)
+
+        # Initialize editor tracking
+        self._current_editor: Optional[YamlEditorView] = None
 
         # Initialize UI components
         self._setup_window()
@@ -547,14 +551,37 @@ class MainWindow(QMainWindow):
     def _on_save(self) -> None:
         """Handle save action."""
         self._logger.info("Save requested")
-        # TODO: Implement save functionality
-        self.set_status("Save functionality will be implemented in Step 4.1")
+
+        if self._current_editor:
+            try:
+                success = self._current_editor.save_file()
+                if success:
+                    current_file = self._current_editor.get_file_path()
+                    file_name = Path(current_file).name if current_file else "file"
+                    self.set_status(f"Saved: {file_name}")
+                    self._logger.info(f"File saved successfully: {current_file}")
+                else:
+                    self.set_status("Save failed")
+                    self._logger.warning("File save failed")
+            except Exception as e:
+                error_msg = f"Error saving file: {e}"
+                self.set_status(error_msg)
+                self._logger.error(error_msg)
+        else:
+            self.set_status("No file open to save")
+            self._logger.debug("Save requested but no editor is active")
 
     def _on_save_all(self) -> None:
         """Handle save all action."""
         self._logger.info("Save all requested")
-        # TODO: Implement save all functionality
-        self.set_status("Save all functionality will be implemented in Step 4.4")
+
+        # For now, we only have one editor, so save all is the same as save
+        # This will be enhanced in Step 4.4 for multi-tab support
+        if self._current_editor:
+            self._on_save()
+        else:
+            self.set_status("No files open to save")
+            self._logger.debug("Save all requested but no editor is active")
 
     def _on_validate_project(self) -> None:
         """Handle validate project action."""
@@ -672,15 +699,94 @@ class MainWindow(QMainWindow):
         """
         self._logger.info(f"File opened: {file_path}")
 
-        # Emit the main window signal for file opening
-        self.file_opened.emit(file_path)
+        try:
+            # Create and set up YAML editor
+            self._open_file_in_editor(file_path)
 
-        # Update status and UI
-        self.set_current_file(file_path)
-        self.set_status(f"Opened: {Path(file_path).name}")
+            # Emit the main window signal for file opening
+            self.file_opened.emit(file_path)
 
-        # Enable relevant actions
-        self.enable_file_actions(True)
+            # Update status and UI
+            self.set_current_file(file_path)
+            self.set_status(f"Opened: {Path(file_path).name}")
+
+            # Enable relevant actions
+            self.enable_file_actions(True)
+
+        except Exception as e:
+            self._logger.error(f"Failed to open file {file_path}: {e}")
+            self.set_status(f"Error opening file: {e}")
+
+    def _open_file_in_editor(self, file_path: str) -> None:
+        """
+        Open a file in the appropriate editor.
+
+        Args:
+            file_path: Path to the file to open
+        """
+        path_obj = Path(file_path)
+
+        # Check if this is a supported file type
+        if path_obj.suffix.lower() not in [".yaml", ".yml", ".md", ".txt", ".json"]:
+            raise RuntimeError(f"Unsupported file type: {path_obj.suffix}")
+
+        # Create new YAML editor
+        yaml_editor = YamlEditorView()
+
+        # Connect editor signals
+        yaml_editor.file_changed.connect(self._on_editor_file_modified)
+        yaml_editor.validation_requested.connect(self._on_editor_validation_requested)
+
+        # Load the file
+        yaml_editor.load_file(path_obj)
+
+        # Replace the current editor widget in the splitter
+        if self._current_editor:
+            # Remove the existing editor
+            self._editor_splitter.replaceWidget(0, yaml_editor)
+            self._current_editor.setParent(None)
+        else:
+            # Replace the placeholder editor widget
+            old_widget = self._editor_splitter.widget(0)
+            if old_widget:
+                self._editor_splitter.replaceWidget(0, yaml_editor)
+                old_widget.setParent(None)
+            else:
+                self._editor_splitter.insertWidget(0, yaml_editor)
+
+        # Update current editor reference
+        self._current_editor = yaml_editor
+
+        self._logger.debug(f"File loaded in YAML editor: {file_path}")
+
+    def _on_editor_file_modified(self, is_modified: bool) -> None:
+        """
+        Handle file modification status changes from editor.
+
+        Args:
+            is_modified: True if file has unsaved changes
+        """
+        if self._current_editor:
+            current_file = self._current_editor.get_file_path()
+            if current_file:
+                file_name = Path(current_file).name
+                if is_modified:
+                    self.set_current_file(f"{file_name} *")
+                else:
+                    self.set_current_file(file_name)
+
+    def _on_editor_validation_requested(self, content: str, file_path: Path) -> None:
+        """
+        Handle validation requests from the editor.
+
+        Args:
+            content: The content to validate
+            file_path: Path to the file being validated
+        """
+        # For now, just emit the main validation signal
+        # This will be enhanced in Step 4.3 with actual validation
+        self.validation_requested.emit()
+        self._logger.debug(f"Validation requested for: {file_path}")
 
     def _on_project_changed(self) -> None:
         """Handle project structure changes from project browser."""
