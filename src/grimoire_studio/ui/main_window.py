@@ -27,6 +27,7 @@ from PyQt6.QtWidgets import (
 from ..core.config import get_config
 from .components.output_console import OutputConsole
 from .components.project_browser import ProjectBrowser
+from .dialogs.new_project import NewProjectDialog
 
 logger = get_logger(__name__)
 
@@ -473,14 +474,61 @@ class MainWindow(QMainWindow):
     def _on_new_project(self) -> None:
         """Handle new project action."""
         self._logger.info("New project requested")
-        # TODO: Implement new project dialog
-        self.set_status("New project dialog will be implemented in Step 3.4")
+
+        try:
+            dialog = NewProjectDialog(self)
+            if dialog.exec() == dialog.DialogCode.Accepted:
+                project_path = dialog.get_created_project_path()
+                if project_path:
+                    self.set_status(f"Successfully created project at: {project_path}")
+                    self._logger.info(f"New project created at: {project_path}")
+                    # Load the newly created project into the project browser
+                    try:
+                        self.load_project(project_path)
+                        self.set_status(
+                            f"Created and loaded project: {Path(project_path).name}"
+                        )
+                    except Exception as load_error:
+                        self._logger.error(
+                            f"Failed to load newly created project: {load_error}"
+                        )
+                        self.set_status(
+                            f"Project created but failed to load: {load_error}"
+                        )
+                else:
+                    self.set_status("Project creation completed")
+        except Exception as e:
+            error_msg = f"Failed to create new project: {e}"
+            self._logger.error(error_msg)
+            self.set_status(error_msg)
 
     def _on_open_project(self) -> None:
         """Handle open project action."""
         self._logger.info("Open project requested")
-        # TODO: Implement project browser dialog
-        self.set_status("Open project dialog will be implemented in Step 3.4")
+
+        from PyQt6.QtWidgets import QFileDialog
+
+        # Show directory selection dialog
+        project_dir = QFileDialog.getExistingDirectory(
+            self,
+            "Select GRIMOIRE Project Directory",
+            "",  # Start from current directory
+            QFileDialog.Option.ShowDirsOnly | QFileDialog.Option.DontResolveSymlinks,
+        )
+
+        if project_dir:
+            try:
+                self._open_project_path(project_dir)
+                self.set_status(f"Opened project: {Path(project_dir).name}")
+            except Exception as e:
+                self._logger.error(f"Failed to open project: {e}")
+                from PyQt6.QtWidgets import QMessageBox
+
+                QMessageBox.critical(
+                    self, "Error Opening Project", f"Failed to open project:\n{e}"
+                )
+        else:
+            self._logger.debug("Project open cancelled by user")
 
     def _open_project_path(self, project_path: str) -> None:
         """
@@ -683,7 +731,8 @@ class MainWindow(QMainWindow):
         Args:
             tab_name: Name of the tab that received new content
         """
-        self._logger.debug(f"New content added to {tab_name} tab")
+        # Note: Avoid logging here to prevent recursion with the logs tab
+        pass
 
     # Output console integration methods
 

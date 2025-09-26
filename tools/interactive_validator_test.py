@@ -169,7 +169,7 @@ def validate_system_complete(validator: YamlValidator, pm: ProjectManager):
         # Then validate with cross-references
         results = validator.validate_system(system_path, complete_system)
 
-        print(f"\n✅ Complete system validation finished")
+        print("\n✅ Complete system validation finished")
         print(f"🎲 System: {complete_system.system.name}")
 
         # Show component counts
@@ -224,7 +224,7 @@ def display_validation_results(results, group_by_file=False):
         severity_counts[result.severity] += 1
 
     # Display summary
-    print(f"\n📈 Validation Summary:")
+    print("\n📈 Validation Summary:")
     print(f"   🚨 Critical: {severity_counts[ValidationSeverity.CRITICAL]}")
     print(f"   ❌ Errors:   {severity_counts[ValidationSeverity.ERROR]}")
     print(f"   ⚠️  Warnings: {severity_counts[ValidationSeverity.WARNING]}")

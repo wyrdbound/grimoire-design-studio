@@ -144,11 +144,11 @@ name: Create Character Flow
         # Check header is set
         assert model.horizontalHeaderItem(0).text() == "Project Files"
 
-        # Check project item is displayed
+        # Check project item is displayed (should show actual project name from system.yaml)
         root_item = model.invisibleRootItem()
         project_item = root_item.child(0)
-        assert project_item.text() == "ui_test_project"
-        assert project_item.toolTip() == "Project: ui_test_project"
+        assert project_item.text() == "UI Test System"
+        assert project_item.toolTip() == "Project: UI Test System"
 
     def test_tree_expansion_after_loading(
         self, project_browser, sample_project_with_files, qtbot
