@@ -654,19 +654,34 @@ class YamlValidator:
     def _validate_flow_prompt_references(
         self, complete_system: Any, results: list[ValidationResult]
     ) -> None:
-        """Validate that flows reference existing prompts."""
+        """Validate that flows reference existing prompts in prompt_id fields."""
         available_prompts = set(complete_system.prompts.keys())
 
         for flow_id, flow in complete_system.flows.items():
             for step in flow.steps:
-                # Check for prompt references in step parameters
-                if hasattr(step, "prompt") and step.prompt:
-                    if step.prompt not in available_prompts:
+                # Check for prompt_id references in step parameters (not the prompt field)
+                # The 'prompt' field is display text, not a reference
+                if hasattr(step, "prompt_id") and step.prompt_id:
+                    if step.prompt_id not in available_prompts:
                         results.append(
                             ValidationResult(
                                 severity=ValidationSeverity.ERROR,
                                 message=f"Flow '{flow_id}' step '{step.id}' "
-                                f"references unknown prompt: '{step.prompt}'",
+                                f"references unknown prompt: '{step.prompt_id}'",
+                                component_id=flow_id,
+                                error_code="UNKNOWN_PROMPT_REFERENCE",
+                            )
+                        )
+
+                # Also check step_config for prompt_id references
+                if hasattr(step, "step_config") and isinstance(step.step_config, dict):
+                    prompt_id = step.step_config.get("prompt_id")
+                    if prompt_id and prompt_id not in available_prompts:
+                        results.append(
+                            ValidationResult(
+                                severity=ValidationSeverity.ERROR,
+                                message=f"Flow '{flow_id}' step '{step.id}' "
+                                f"references unknown prompt: '{prompt_id}'",
                                 component_id=flow_id,
                                 error_code="UNKNOWN_PROMPT_REFERENCE",
                             )

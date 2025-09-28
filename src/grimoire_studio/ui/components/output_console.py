@@ -74,6 +74,9 @@ class OutputConsole(QWidget):
         # Users can change this later if needed via set_log_level_filter()
         self._log_level_filter = logging.INFO
 
+        # Project root path for relative path display
+        self._project_root: Optional[Path] = None
+
         # Setup UI
         self._setup_ui()
         self._setup_logging_handler()
@@ -259,6 +262,8 @@ class OutputConsole(QWidget):
         Args:
             tab_index: Index of the tab to switch to
         """
+        # Ensure tab_index is an integer (PyQt6 compatibility fix)
+        tab_index = int(tab_index)
         if 0 <= tab_index < self._tab_widget.count():
             self._tab_widget.setCurrentIndex(tab_index)
 
@@ -269,11 +274,54 @@ class OutputConsole(QWidget):
         Args:
             index: New tab index
         """
+        # Ensure index is an integer (PyQt6 compatibility fix)
+        try:
+            index = int(index)
+        except (ValueError, TypeError):
+            return
+
         tab_names = ["Validation", "Execution", "Logs"]
         if 0 <= index < len(tab_names):
             self._logger.debug(f"Switched to {tab_names[index]} tab")
 
     # Public API methods for displaying content
+
+    def set_project_root(self, project_path: Optional[str]) -> None:
+        """
+        Set the project root path for displaying relative file paths.
+
+        Args:
+            project_path: Path to the project root directory, or None to clear
+        """
+        if project_path:
+            self._project_root = Path(project_path).resolve()
+            self._logger.debug(f"Project root set to: {self._project_root}")
+        else:
+            self._project_root = None
+            self._logger.debug("Project root cleared")
+
+    def _get_relative_path(self, file_path: str) -> str:
+        """
+        Get a relative path from project root if possible, otherwise return the original path.
+
+        Args:
+            file_path: Absolute file path
+
+        Returns:
+            Relative path from project root if possible, otherwise original path
+        """
+        if not self._project_root or not file_path:
+            return file_path
+
+        try:
+            path = Path(file_path).resolve()
+            # Try to make it relative to project root
+            relative_path = path.relative_to(self._project_root)
+            # Use forward slashes for cross-platform compatibility
+            return relative_path.as_posix()
+        except (ValueError, OSError):
+            # If path is not within project root, return original
+            return file_path
 
     def display_validation_results(
         self, results: list[dict[str, Any]], auto_switch: bool = True
@@ -299,6 +347,26 @@ class OutputConsole(QWidget):
             self.INFO_COLOR,
         )
 
+        # Check if there are any validation failures (errors or warnings)
+        failures = [
+            r for r in results if r.get("level", "").lower() in ["error", "warning"]
+        ]
+
+        if not results:
+            # No validation results at all - show success message
+            self._append_colored_text(
+                self._validation_text,
+                "✅ No validation issues found. All files are valid!\n",
+                self.SUCCESS_COLOR,
+            )
+        elif not failures:
+            # Results exist but no failures - show success message
+            self._append_colored_text(
+                self._validation_text,
+                "✅ Validation completed successfully. No errors or warnings found!\n",
+                self.SUCCESS_COLOR,
+            )
+
         for result in results:
             level = result.get("level", "info").lower()
             message = result.get("message", "Unknown validation result")
@@ -322,11 +390,12 @@ class OutputConsole(QWidget):
             # Format message with file/line if available
             full_message = f"{prefix}{message}"
             if file_path:
-                file_name = Path(file_path).name
+                # Show relative path from project root if possible, otherwise full path
+                file_display = self._get_relative_path(file_path)
                 if line_num:
-                    full_message += f" (in {file_name}:{line_num})"
+                    full_message += f" (in {file_display}:{line_num})"
                 else:
-                    full_message += f" (in {file_name})"
+                    full_message += f" (in {file_display})"
 
             self._append_colored_text(self._validation_text, full_message + "\n", color)
 
