@@ -209,7 +209,7 @@ class OutputConsole(QWidget):
             if not font.exactMatch():
                 font = QFont("Courier New")
 
-        font.setPointSize(11)  # Increased from 9 to 11 for better readability
+        font.setPointSize(13)  # Increased from 11 to 13 for better readability
         font.setStyleHint(QFont.StyleHint.Monospace)
         return font
 

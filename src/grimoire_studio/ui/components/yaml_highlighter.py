@@ -52,13 +52,42 @@ class YamlSyntaxHighlighter(QSyntaxHighlighter):
         # Cache for token formats to improve performance
         self._token_formats: dict[Any, QTextCharFormat] = {}
 
-        # Error highlighting format
+        # Error highlighting formats - improved visibility on dark backgrounds
         self._error_format = QTextCharFormat()
-        self._error_format.setBackground(QColor(255, 200, 200, 100))
+        self._error_format.setBackground(
+            QColor(139, 69, 69, 100)
+        )  # Dark red background
         self._error_format.setUnderlineStyle(
             QTextCharFormat.UnderlineStyle.WaveUnderline
         )
-        self._error_format.setUnderlineColor(QColor(255, 0, 0))
+        self._error_format.setUnderlineColor(
+            QColor(255, 85, 85)
+        )  # Bright red underline
+
+        # Warning highlighting format - improved visibility on dark backgrounds
+        self._warning_format = QTextCharFormat()
+        self._warning_format.setBackground(
+            QColor(184, 134, 11, 80)
+        )  # Dark yellow background
+        self._warning_format.setUnderlineStyle(
+            QTextCharFormat.UnderlineStyle.WaveUnderline
+        )
+        self._warning_format.setUnderlineColor(
+            QColor(250, 204, 21)
+        )  # Bright yellow underline
+
+        # Info highlighting format for informational messages
+        self._info_format = QTextCharFormat()
+        self._info_format.setBackground(QColor(59, 130, 246, 60))  # Blue background
+        self._info_format.setUnderlineStyle(
+            QTextCharFormat.UnderlineStyle.WaveUnderline
+        )
+        self._info_format.setUnderlineColor(
+            QColor(96, 165, 250)
+        )  # Light blue underline
+
+        # Track highlighted error lines for clearing
+        self._highlighted_lines: set[int] = set()
 
         # Initialize token formats based on Pygments style
         self._setup_token_formats()
@@ -70,19 +99,27 @@ class YamlSyntaxHighlighter(QSyntaxHighlighter):
         # Clear existing formats
         self._token_formats.clear()
 
-        # Define color mappings for YAML tokens
+        # Define color mappings for YAML tokens with improved contrast for dark themes
         token_colors = {
-            Token.Keyword: QColor(0, 100, 200),  # YAML directives, tags
-            Token.Name.Tag: QColor(0, 100, 200),  # YAML tags
-            Token.Literal.Scalar.Plain: QColor(0, 0, 0),  # Plain scalars
-            Token.Literal.Scalar.Single: QColor(0, 128, 0),  # Single quoted strings
-            Token.Literal.Scalar.Double: QColor(0, 128, 0),  # Double quoted strings
-            Token.Comment: QColor(128, 128, 128),  # Comments
-            Token.Punctuation: QColor(100, 100, 100),  # Punctuation (-, :, etc.)
-            Token.Number: QColor(200, 0, 100),  # Numbers
-            Token.Literal: QColor(150, 75, 0),  # Literals
-            Token.Name.Variable: QColor(50, 50, 200),  # Variables
-            Token.Error: QColor(255, 0, 0),  # Errors
+            Token.Keyword: QColor(120, 180, 255),  # YAML directives, tags - bright blue
+            Token.Name.Tag: QColor(120, 180, 255),  # YAML tags - bright blue
+            Token.Literal.Scalar.Plain: QColor(
+                220, 220, 220
+            ),  # Plain scalars - light gray
+            Token.Literal.Scalar.Single: QColor(
+                152, 195, 121
+            ),  # Single quoted strings - green
+            Token.Literal.Scalar.Double: QColor(
+                152, 195, 121
+            ),  # Double quoted strings - green
+            Token.Comment: QColor(128, 128, 128),  # Comments - gray
+            Token.Punctuation: QColor(
+                171, 178, 191
+            ),  # Punctuation (-, :, etc.) - light gray
+            Token.Number: QColor(209, 154, 102),  # Numbers - orange
+            Token.Literal: QColor(229, 192, 123),  # Literals - yellow
+            Token.Name.Variable: QColor(198, 120, 221),  # Variables - purple
+            Token.Error: QColor(255, 85, 85),  # Errors - bright red
         }
 
         # Create QTextCharFormat for each token type
@@ -97,7 +134,9 @@ class YamlSyntaxHighlighter(QSyntaxHighlighter):
                 format_obj.setFontWeight(QFont.Weight.Bold)
             elif token_type == Token.Error:
                 format_obj.setFontWeight(QFont.Weight.Bold)
-                format_obj.setBackground(QColor(255, 200, 200, 100))
+                format_obj.setBackground(
+                    QColor(139, 69, 69, 100)
+                )  # Dark red for better dark theme contrast
 
             self._token_formats[token_type] = format_obj
 
@@ -242,15 +281,20 @@ class YamlSyntaxHighlighter(QSyntaxHighlighter):
             logger.error(f"Failed to set color scheme '{scheme_name}': {e}")
 
     def highlight_error(
-        self, line_number: int, start_col: int = 0, end_col: int = -1
+        self,
+        line_number: int,
+        start_col: int = 0,
+        end_col: int = -1,
+        severity: str = "error",
     ) -> None:
         """
-        Highlight a specific line or range as an error.
+        Highlight a specific line or range as an error or warning.
 
         Args:
             line_number: Line number to highlight (0-based)
             start_col: Starting column (0-based), default 0
             end_col: Ending column (0-based), -1 for entire line
+            severity: Severity level ("error", "warning", "info")
         """
         document = self.document()
         if not document:
@@ -268,18 +312,58 @@ class YamlSyntaxHighlighter(QSyntaxHighlighter):
         else:
             end_pos = min(end_col, len(block.text()))
 
+        # Choose appropriate format based on severity
+        severity_lower = severity.lower()
+        if severity_lower == "warning":
+            highlight_format = self._warning_format
+        elif severity_lower in ("info", "information"):
+            highlight_format = self._info_format
+        else:  # error or any other severity
+            highlight_format = self._error_format
+
         # Apply error highlighting using additional format
         if start_pos < end_pos:
             # Store current block and apply error format
             current_block = self.currentBlock()
             if current_block == block:
                 current_format = self.format(start_pos)
-                error_format = QTextCharFormat(current_format)
-                error_format.merge(self._error_format)
-                self.setFormat(start_pos, end_pos - start_pos, error_format)
+                combined_format = QTextCharFormat(current_format)
+                combined_format.merge(highlight_format)
+                self.setFormat(start_pos, end_pos - start_pos, combined_format)
+
+        # Track this line as highlighted
+        self._highlighted_lines.add(line_number)
+
+    def highlight_validation_results(self, validation_results: list) -> None:
+        """
+        Highlight multiple validation results in the document.
+
+        Args:
+            validation_results: List of validation result objects with line_number and severity
+        """
+        # Clear previous highlights
+        self.clear_error_highlights()
+
+        # Apply new highlights
+        for result in validation_results:
+            if (
+                hasattr(result, "line_number")
+                and result.line_number is not None
+                and result.line_number > 0
+            ):
+                # Convert to 0-based line number
+                line_number = result.line_number - 1
+                severity = getattr(result, "severity", "error")
+                # Convert enum to string if needed
+                if not isinstance(severity, str) and hasattr(severity, "value"):
+                    severity = str(severity.value)
+                else:
+                    severity = str(severity)
+                self.highlight_error(line_number, severity=severity)
 
     def clear_error_highlights(self) -> None:
         """Clear all error highlighting and re-highlight the document."""
+        self._highlighted_lines.clear()
         if self.document():
             self.rehighlight()
             logger.debug("Error highlights cleared")
@@ -295,8 +379,10 @@ class YamlSyntaxHighlighter(QSyntaxHighlighter):
         for format_obj in self._token_formats.values():
             format_obj.setFont(font)
 
-        # Update error format font
+        # Update error format fonts
         self._error_format.setFont(font)
+        self._warning_format.setFont(font)
+        self._info_format.setFont(font)
 
         # Trigger re-highlighting
         if self.document():
