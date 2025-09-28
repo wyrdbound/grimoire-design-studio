@@ -387,12 +387,15 @@ class MainWindow(QMainWindow):
 
         # Set initial splitter sizes from configuration
         main_ratios = self._config.get("splitter/main_horizontal", [300, 600, 300])
+        # Ensure all ratios are integers (PyQt6 compatibility fix)
+        main_ratios = [int(size) for size in main_ratios]
         self._main_splitter.setSizes(main_ratios)
 
         editor_ratios = self._config.get("splitter/editor_vertical", [400, 200])
+        # Ensure all ratios are integers (PyQt6 compatibility fix)
+        editor_ratios = [int(size) for size in editor_ratios]
         # Ensure output console always has at least 150px height
         if len(editor_ratios) >= 2:
-            editor_ratios = list(editor_ratios)
             if editor_ratios[1] < 150:
                 editor_ratios[1] = 150
         self._editor_splitter.setSizes(editor_ratios)
@@ -565,12 +568,15 @@ class MainWindow(QMainWindow):
             # Restore splitter states with validation
             main_ratios = self._config.get("splitter/main_horizontal", [300, 600, 300])
             if isinstance(main_ratios, (list, tuple)) and len(main_ratios) >= 3:
+                # Ensure all ratios are integers (PyQt6 compatibility fix)
+                main_ratios = [int(size) for size in main_ratios]
                 self._main_splitter.setSizes(main_ratios)
 
             editor_ratios = self._config.get("splitter/editor_vertical", [400, 200])
             if isinstance(editor_ratios, (list, tuple)) and len(editor_ratios) >= 2:
+                # Ensure all ratios are integers (PyQt6 compatibility fix)
+                editor_ratios = [int(size) for size in editor_ratios]
                 # Ensure output console always has at least 150px height
-                editor_ratios = list(editor_ratios)
                 if editor_ratios[1] < 150:
                     editor_ratios[1] = 150
                 self._editor_splitter.setSizes(editor_ratios)
@@ -633,6 +639,12 @@ class MainWindow(QMainWindow):
 
     def _close_tab(self, index: int) -> None:
         """Close a tab at the specified index."""
+        # Ensure index is an integer (PyQt6 compatibility fix)
+        try:
+            index = int(index)
+        except (ValueError, TypeError):
+            return
+
         if index < 0 or index >= self._editor_tabs.count():
             return
 
@@ -664,6 +676,12 @@ class MainWindow(QMainWindow):
 
     def _on_tab_changed(self, index: int) -> None:
         """Handle tab change events."""
+        # Ensure index is an integer (PyQt6 compatibility fix)
+        try:
+            index = int(index)
+        except (ValueError, TypeError):
+            return
+
         if index < 0:
             return
 
@@ -693,6 +711,11 @@ class MainWindow(QMainWindow):
             return
 
         tab_index = tab_bar.tabAt(position)
+        # Ensure tab_index is an integer (PyQt6 compatibility fix)
+        try:
+            tab_index = int(tab_index)
+        except (ValueError, TypeError):
+            return
         if tab_index < 0:
             return
 
@@ -745,6 +768,11 @@ class MainWindow(QMainWindow):
 
     def _close_other_tabs(self, keep_index: int) -> None:
         """Close all tabs except the one at keep_index."""
+        # Ensure keep_index is an integer (PyQt6 compatibility fix)
+        try:
+            keep_index = int(keep_index)
+        except (ValueError, TypeError):
+            return
         # Close tabs from right to left to maintain indices
         for i in range(self._editor_tabs.count() - 1, -1, -1):
             if i != keep_index:
@@ -876,7 +904,8 @@ class MainWindow(QMainWindow):
 
         # Add the tab and make it current
         tab_index = self._editor_tabs.addTab(placeholder, "Welcome")
-        self._editor_tabs.setCurrentIndex(tab_index)
+        # Ensure tab_index is an integer (PyQt6 compatibility fix)
+        self._editor_tabs.setCurrentIndex(int(tab_index))
 
     def _update_recent_projects_menu(self) -> None:
         """Update the recent projects menu with current list."""
@@ -1038,6 +1067,33 @@ class MainWindow(QMainWindow):
             f"Save all completed: {saved_count} saved, {failed_count} failed"
         )
 
+    def _get_relative_file_path(self, file_path: Optional[Path]) -> Optional[str]:
+        """
+        Get a file path relative to the current project root if possible.
+
+        Args:
+            file_path: Absolute file path
+
+        Returns:
+            Relative path from project root if possible, otherwise absolute path as string
+        """
+        if not file_path:
+            return None
+
+        # Get current project to determine root
+        current_project = self._project_browser.get_current_project()
+        if not current_project:
+            return str(file_path)
+
+        try:
+            # Try to make it relative to project root
+            relative_path = file_path.relative_to(current_project.project_path)
+            # Use forward slashes for cross-platform compatibility
+            return relative_path.as_posix()
+        except (ValueError, OSError):
+            # If path is not within project root, return absolute path
+            return str(file_path)
+
     def _perform_project_validation(
         self, auto_switch_console: bool = True, update_status_message: bool = True
     ) -> bool:
@@ -1106,7 +1162,7 @@ class MainWindow(QMainWindow):
                     {
                         "level": result.severity.value,
                         "message": result.message,
-                        "file": str(result.file_path) if result.file_path else None,
+                        "file": self._get_relative_file_path(result.file_path),
                         "line": result.line_number,
                     }
                 )
@@ -1457,7 +1513,8 @@ class MainWindow(QMainWindow):
         self._open_editors[file_key] = editor
 
         # Switch to the new tab
-        self._editor_tabs.setCurrentIndex(tab_index)
+        # Ensure tab_index is an integer (PyQt6 compatibility fix)
+        self._editor_tabs.setCurrentIndex(int(tab_index))
 
         # Enable file actions since we now have a file open
         self.enable_file_actions(True)
@@ -1531,7 +1588,7 @@ class MainWindow(QMainWindow):
                 {
                     "level": result.severity.value,
                     "message": result.message,
-                    "file": str(result.file_path) if result.file_path else None,
+                    "file": self._get_relative_file_path(result.file_path),
                     "line": result.line_number,
                 }
             )
@@ -1608,6 +1665,8 @@ class MainWindow(QMainWindow):
             self.set_status("No project loaded")
             self.set_current_file(None)
             self.set_validation_status("No validation")
+            # Clear project root for output console
+            self._output_console.set_project_root(None)
 
     def load_project(self, project_path: str) -> None:
         """
@@ -1621,6 +1680,8 @@ class MainWindow(QMainWindow):
         """
         try:
             self._project_browser.load_project(project_path)
+            # Set project root for relative path display in output console
+            self._output_console.set_project_root(project_path)
             self._logger.info(f"Project loaded in main window: {project_path}")
         except Exception as e:
             self._logger.error(f"Failed to load project in main window: {e}")
