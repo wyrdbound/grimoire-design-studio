@@ -67,6 +67,7 @@ class YamlEditorView(QWidget):
         self._file_path: Optional[Path] = None
         self._has_unsaved_changes = False
         self._original_content = ""
+        self._last_validated_content = ""
         self._validator = YamlValidator()
         self._output_console: Optional[OutputConsole] = None
 
@@ -147,7 +148,7 @@ class YamlEditorView(QWidget):
             if not font.exactMatch():
                 font = QFont("Courier New")
 
-        font.setPointSize(12)  # Increased from 10 to 12 for better readability
+        font.setPointSize(14)  # Increased from 12 to 14 for better readability
         font.setStyleHint(QFont.StyleHint.Monospace)
         return font
 
@@ -205,16 +206,27 @@ class YamlEditorView(QWidget):
         col = cursor.columnNumber() + 1
         self._position_label.setText(f"Line {line}, Col {col}")
 
-    def _perform_validation(self) -> None:
-        """Perform validation on the current content."""
+    def _perform_validation(self, force_validation: bool = False) -> None:
+        """
+        Perform validation on the current content.
+
+        Args:
+            force_validation: If True, validate even if content hasn't changed
+        """
         if not self._file_path:
             return
 
         content = self._text_edit.toPlainText()
+
+        # Only validate if content has changed since last validation or if forced
+        if not force_validation and content == self._last_validated_content:
+            return
+
+        self._last_validated_content = content
         results = self._validator.validate_yaml_syntax(content, self._file_path)
 
-        # Clear previous error highlighting
-        self._highlighter.clear_error_highlights()
+        # Clear previous error highlighting and apply new highlights
+        self._highlighter.highlight_validation_results(results)
 
         # If we have an output console, display results
         if self._output_console:
@@ -229,16 +241,25 @@ class YamlEditorView(QWidget):
                     }
                 )
 
+            # Always display validation results, even when there are no errors
             if formatted_results:
                 self._output_console.display_validation_results(
                     formatted_results, auto_switch=False
                 )
-
-        # Highlight validation errors in the editor
-        for result in results:
-            if result.line_number is not None and result.line_number > 0:
-                # Convert to 0-based line number for highlighter
-                self._highlighter.highlight_error(result.line_number - 1)
+            else:
+                # Display success message when no validation issues found
+                file_name = self._file_path.name if self._file_path else "file"
+                success_result = [
+                    {
+                        "level": "success",
+                        "message": f"YAML validation passed - no issues found in {file_name}",
+                        "file": str(self._file_path) if self._file_path else None,
+                        "line": None,
+                    }
+                ]
+                self._output_console.display_validation_results(
+                    success_result, auto_switch=False
+                )
 
         # Emit validation signal
         self.validation_requested.emit(content, self._file_path)
@@ -247,15 +268,18 @@ class YamlEditorView(QWidget):
 
     # Public API methods
 
-    def set_output_console(self, output_console: OutputConsole) -> None:
+    def set_output_console(self, output_console: Optional[OutputConsole]) -> None:
         """
         Set the output console for displaying validation results.
 
         Args:
-            output_console: The OutputConsole instance to use
+            output_console: The OutputConsole instance to use, or None to disable
         """
         self._output_console = output_console
-        logger.debug("Output console connected to YAML editor")
+        if output_console:
+            logger.debug("Output console connected to YAML editor")
+        else:
+            logger.debug("Output console disconnected from YAML editor")
 
     def load_file(self, file_path: Path) -> bool:
         """
@@ -283,13 +307,14 @@ class YamlEditorView(QWidget):
             # Update state
             self._file_path = file_path
             self._original_content = content
+            self._last_validated_content = ""  # Reset to ensure validation runs
             self._has_unsaved_changes = False
 
             # Update UI
             self._update_status()
 
             # Perform initial validation
-            self._perform_validation()
+            self._perform_validation(force_validation=True)
 
             logger.info(f"Loaded file: {file_path}")
             return True
@@ -342,7 +367,7 @@ class YamlEditorView(QWidget):
             self._update_status()
 
             # Perform validation on saved content
-            self._perform_validation()
+            self._perform_validation(force_validation=True)
 
             # Emit signal
             self.file_saved.emit(target_path)

@@ -26,6 +26,26 @@ Always remember the following points as you are working on this code base:
 
 See [TESTING.md](TESTING.md) for full details.
 
+### UI Testing Guidelines
+
+17. **Prevent blocking dialogs in tests** - UI components that require user interaction (like QMessageBox.question(), file dialogs, etc.) must not block test execution. Use test mode flags or check for test environments to skip these interactions:
+
+```python
+# Check for test environment
+app = QApplication.instance()
+is_test_environment = (
+    app and "test" in app.applicationName().lower()
+) or hasattr(self, '_test_mode')
+
+# Skip blocking dialogs in tests
+if not is_test_environment:
+    reply = QMessageBox.question(...)
+```
+
+18. **Use qtbot for widgets only** - Only add QWidget-derived objects to qtbot.addWidget(). Do not add QTextDocument, QTimer, or other non-widget objects as they will cause TypeError exceptions.
+
+19. **Mock external dependencies in UI tests** - When testing UI components that depend on file operations, network calls, or complex validation, use proper mocking to ensure tests are fast and reliable.
+
 ## Cross-Platform Compatibility
 
 11. **Always use `pathlib.Path` for file and directory operations** - Never use string concatenation or os.path.join() for paths. Use `Path("/base") / "subdir" / "file.txt"` instead of `"/base/subdir/file.txt"`.

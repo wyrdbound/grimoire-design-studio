@@ -114,6 +114,16 @@ class YamlValidator:
     - Cross-reference validation between components
     """
 
+    # Official GRIMOIRE directories from specification
+    GRIMOIRE_DIRECTORIES = [
+        "flows",
+        "models",
+        "compendiums",
+        "tables",
+        "sources",
+        "prompts",
+    ]
+
     # Required fields for each component type
     REQUIRED_FIELDS = {
         "system": {"id", "kind", "name"},

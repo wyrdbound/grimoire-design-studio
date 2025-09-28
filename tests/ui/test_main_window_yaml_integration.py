@@ -68,9 +68,10 @@ fields:
         main_window._on_file_opened(str(test_file))
 
         # Verify editor was created and file was loaded
-        assert main_window._current_editor is not None
-        assert main_window._current_editor.get_file_path() == test_file
-        assert test_content.strip() in main_window._current_editor.get_content()
+        current_editor = main_window._get_current_editor()
+        assert current_editor is not None
+        assert current_editor.get_file_path() == test_file
+        assert test_content.strip() in current_editor.get_content()
 
         # Verify status was updated
         assert "test_model.yaml" in main_window._file_label.text()
@@ -86,7 +87,7 @@ fields:
         main_window._on_file_opened(str(test_file))
 
         # Make a change to the editor
-        editor = main_window._current_editor
+        editor = main_window._get_current_editor()
         assert editor is not None
 
         new_content = test_content + "\n  # Added comment"
@@ -113,7 +114,7 @@ fields:
         assert "*" not in main_window._file_label.text()
 
         # Make a change
-        editor = main_window._current_editor
+        editor = main_window._get_current_editor()
         assert editor is not None
 
         # Simulate text change that triggers the file_changed signal
@@ -161,14 +162,14 @@ fields:
         main_window.load_project(str(project_path))
         main_window._on_file_opened(str(test_file))
 
-        first_editor = main_window._current_editor
+        first_editor = main_window._get_current_editor()
         assert first_editor is not None
         assert first_editor.get_file_path() == test_file
 
         # Open second file
         main_window._on_file_opened(str(test_file2))
 
-        second_editor = main_window._current_editor
+        second_editor = main_window._get_current_editor()
         assert second_editor is not None
         assert second_editor.get_file_path() == test_file2
         assert second_editor != first_editor  # Should be a different editor instance

@@ -218,7 +218,7 @@ class NewProjectDialog(QDialog):
         # Header
         header_label = QLabel("Create a New GRIMOIRE Project")
         header_font = QFont()
-        header_font.setPointSize(14)
+        header_font.setPointSize(16)
         header_font.setBold(True)
         header_label.setFont(header_font)
         header_label.setAlignment(Qt.AlignmentFlag.AlignCenter)

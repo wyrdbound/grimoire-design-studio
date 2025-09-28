@@ -29,6 +29,7 @@ classifiers = [
 dependencies = [
     "PyQt6>=6.5.0",
     "pyyaml>=6.0",
+    "pygments>=2.14.0",  # Required for YAML syntax highlighting
     "grimoire-logging>=0.1.0",
     # Note: Other GRIMOIRE libraries will be added when available
     # "grimoire-model>=1.0.0",
@@ -48,6 +49,7 @@ dev = [
     "ruff>=0.1.0",
     "mypy>=1.5.0",
     "types-PyYAML>=6.0.0",
+    "types-Pygments>=2.14.0",  # Type stubs for Pygments syntax highlighter
     "bandit[toml]>=1.7.0",  # Security linting
 ]
 

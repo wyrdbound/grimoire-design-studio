@@ -95,11 +95,10 @@ def test_main_window_action_enabling(qapp: QApplication) -> None:
     # Test file actions
     window.enable_file_actions(True)
     assert window._action_save.isEnabled()
-    assert window._action_save_all.isEnabled()
+    # Note: save_all is managed separately based on unsaved changes state
 
     window.enable_file_actions(False)
     assert not window._action_save.isEnabled()
-    assert not window._action_save_all.isEnabled()
 
 
 @pytest.mark.skipif(SKIP_UI_ON_WINDOWS_CI, reason="UI tests don't work in Windows CI")

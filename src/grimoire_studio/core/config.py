@@ -50,7 +50,7 @@ class AppConfig:
             "recent/max_items": 10,  # Maximum items to keep in recent lists
             # Editor preferences
             "editor/font_family": "Consolas",  # Windows default
-            "editor/font_size": 10,
+            "editor/font_size": 14,
             "editor/tab_width": 2,
             "editor/word_wrap": True,
             "editor/line_numbers": True,
