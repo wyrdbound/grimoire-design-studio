@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget
 src_path = Path(__file__).parent.parent / "src"
 sys.path.insert(0, str(src_path))
 
-from grimoire_studio.ui.views.yaml_editor_view import YamlEditorView
+from grimoire_studio.ui.views.yaml_editor_view import YamlEditorView  # noqa: E402
 
 
 class TestWindow(QMainWindow):
@@ -38,7 +38,7 @@ class TestWindow(QMainWindow):
         layout.addWidget(self.yaml_editor)
 
         # Set some sample YAML content
-        sample_yaml = '''# Sample GRIMOIRE System
+        sample_yaml = """# Sample GRIMOIRE System
 kind: system
 id: sample_system
 name: "Sample System"
@@ -79,7 +79,7 @@ flows:
         id: get_name
         prompt: "Enter character name:"
         output: character_name
-      
+
       - type: dice_roll
         id: roll_stats
         expression: "3d6"
@@ -90,17 +90,17 @@ flows:
 invalid_yaml_for_error_test:
   - this should be fine
   but this line has bad indentation
-'''
+"""
         self.yaml_editor.set_content(sample_yaml)
 
 
 def main():
     """Main function to run the test."""
     app = QApplication(sys.argv)
-    
+
     window = TestWindow()
     window.show()
-    
+
     return app.exec()
 
 

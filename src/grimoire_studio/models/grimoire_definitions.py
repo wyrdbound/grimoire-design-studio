@@ -10,6 +10,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Union
 
+# Import model definitions from grimoire-model to ensure consistency
+from grimoire_model import AttributeDefinition, ModelDefinition  # noqa: F401
+
 
 @dataclass
 class CurrencyDenomination:
@@ -139,42 +142,6 @@ class SystemDefinition:
 
 
 @dataclass
-class AttributeDefinition:
-    """Definition of a model attribute with type and constraints.
-
-    Attributes:
-        type: Data type (str, int, float, bool, roll, list, dict, or model name)
-        default: Default value if not provided
-        range: Valid range for numeric types (e.g., "1..20", "0..")
-        enum: List of allowed values for string types
-        derived: Formula for calculated attributes
-        of: Element type for list attributes
-        optional: Whether the attribute can be null/undefined
-    """
-
-    type: str
-    default: Any | None = None
-    range: str | None = None
-    enum: list[str] | None = None
-    derived: str | None = None
-    of: str | None = None
-    optional: bool | None = None
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> AttributeDefinition:
-        """Create AttributeDefinition from dictionary data."""
-        return cls(
-            type=data["type"],
-            default=data.get("default"),
-            range=data.get("range"),
-            enum=data.get("enum"),
-            derived=data.get("derived"),
-            of=data.get("of"),
-            optional=data.get("optional"),
-        )
-
-
-@dataclass
 class ValidationRule:
     """A validation rule for model instances.
 
@@ -193,72 +160,6 @@ class ValidationRule:
             expression=data["expression"],
             message=data["message"],
         )
-
-
-@dataclass
-class ModelDefinition:
-    """Definition of a GRIMOIRE model with attributes and validation.
-
-    Attributes:
-        id: Unique identifier for the model
-        kind: Always "model" for model definitions
-        name: Human-readable name for the model
-        description: Detailed description of what the model represents
-        version: Version number for the model definition
-        extends: Array of model IDs that this model inherits from
-        attributes: Map of attribute definitions by name
-        validations: Array of validation rules
-    """
-
-    id: str
-    kind: str
-    name: str
-    description: str | None = None
-    version: int = 1
-    extends: list[str] = field(default_factory=list)
-    attributes: dict[str, Any] = field(default_factory=dict)
-    validations: list[ValidationRule] = field(default_factory=list)
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> ModelDefinition:
-        """Create ModelDefinition from dictionary data."""
-        # Parse nested attribute definitions recursively
-        attributes = cls._parse_attributes(data.get("attributes", {}))
-
-        validations = [
-            ValidationRule.from_dict(val_data)
-            for val_data in data.get("validations", [])
-        ]
-
-        return cls(
-            id=data["id"],
-            kind=data["kind"],
-            name=data["name"],
-            description=data.get("description"),
-            version=data.get("version", 1),
-            extends=data.get("extends", []),
-            attributes=attributes,
-            validations=validations,
-        )
-
-    @classmethod
-    def _parse_attributes(cls, attrs: dict[str, Any]) -> dict[str, Any]:
-        """Recursively parse attribute definitions."""
-        parsed_attrs: dict[str, Any] = {}
-
-        for attr_name, attr_data in attrs.items():
-            if isinstance(attr_data, dict):
-                # Check if this looks like an attribute definition
-                if "type" in attr_data:
-                    parsed_attrs[attr_name] = AttributeDefinition.from_dict(attr_data)
-                else:
-                    # Nested structure - recurse
-                    parsed_attrs[attr_name] = cls._parse_attributes(attr_data)
-            else:
-                # Direct value
-                parsed_attrs[attr_name] = attr_data
-
-        return parsed_attrs
 
 
 @dataclass
@@ -644,7 +545,7 @@ class CompleteSystem:
 
         # Load all component types
         models = {
-            model_id: ModelDefinition.from_dict(model_data)
+            model_id: ModelDefinition.model_validate(model_data)
             for model_id, model_data in data.get("models", {}).items()
         }
 

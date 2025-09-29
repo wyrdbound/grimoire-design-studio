@@ -213,7 +213,7 @@ A GRIMOIRE system created with GRIMOIRE Design Studio.
                     model_data = yaml.safe_load(f)
 
                 if model_data and isinstance(model_data, dict):
-                    model = ModelDefinition.from_dict(model_data)
+                    model = ModelDefinition.model_validate(model_data)
                     models[model.id] = model
 
             except Exception as e:
