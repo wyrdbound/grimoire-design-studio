@@ -12,8 +12,7 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-# Now import and run the interactive validator
-from tools.interactive_validator_test import main
+from tools.interactive_validator_test import main  # noqa: E402
 
 if __name__ == "__main__":
     main()

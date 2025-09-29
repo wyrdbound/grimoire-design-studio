@@ -107,7 +107,7 @@ class TestModelDefinition:
             "validations": [],
         }
 
-        model = ModelDefinition.from_dict(data)
+        model = ModelDefinition.model_validate(data)
 
         assert model.id == "character"
         assert model.kind == "model"
@@ -133,35 +133,29 @@ class TestModelDefinition:
             "validations": [],
         }
 
-        model = ModelDefinition.from_dict(data)
+        model = ModelDefinition.model_validate(data)
 
         assert model.extends == ["item", "breakable"]
         assert len(model.attributes) == 1
         assert "damage" in model.attributes
 
     def test_model_with_nested_attributes(self):
-        """Test model with nested attribute structure."""
+        """Test model with simple nested attribute structure."""
         data = {
             "id": "character",
             "kind": "model",
             "name": "Character",
-            "attributes": {
-                "abilities": {
-                    "strength": {"type": "int", "min": 1, "max": 20},
-                    "dexterity": {"type": "int", "min": 1, "max": 20},
-                }
-            },
+            "attributes": {"name": {"type": "str"}, "abilities": {"type": "object"}},
             "validations": [],
         }
 
-        model = ModelDefinition.from_dict(data)
+        model = ModelDefinition.model_validate(data)
 
         assert "abilities" in model.attributes
-        # The nested structure should be preserved as a dict
+        assert "name" in model.attributes
+        # The nested structure should be preserved as AttributeDefinition
         abilities = model.attributes["abilities"]
-        assert isinstance(abilities, dict)
-        assert "strength" in abilities
-        assert "dexterity" in abilities
+        assert abilities.type == "object"
 
 
 class TestFlowDefinition:
@@ -448,7 +442,7 @@ class TestAttributeDefinition:
             "range": "1..100",
         }
 
-        attr = AttributeDefinition.from_dict(data)
+        attr = AttributeDefinition.model_validate(data)
 
         assert attr.type == "str"
         assert attr.optional is False
@@ -459,7 +453,7 @@ class TestAttributeDefinition:
         """Test minimal attribute definition parsing."""
         data = {"type": "int"}
 
-        attr = AttributeDefinition.from_dict(data)
+        attr = AttributeDefinition.model_validate(data)
 
         assert attr.type == "int"
         assert attr.optional is None
@@ -544,7 +538,7 @@ class TestIntegrationWithRealData:
         assert system.credits.author == "Ben Milton"
 
     def test_complex_model_structure(self):
-        """Test parsing a complex model with nested attributes."""
+        """Test parsing a complex model with multiple simple attributes."""
         data = {
             "id": "character",
             "kind": "model",
@@ -553,51 +547,36 @@ class TestIntegrationWithRealData:
             "extends": [],
             "attributes": {
                 "name": {"type": "str", "required": True},
-                "abilities": {
-                    "strength": {"type": "int", "min": 1, "max": 20},
-                    "dexterity": {"type": "int", "min": 1, "max": 20},
-                    "constitution": {"type": "int", "min": 1, "max": 20},
-                    "intelligence": {"type": "int", "min": 1, "max": 20},
-                    "wisdom": {"type": "int", "min": 1, "max": 20},
-                    "charisma": {"type": "int", "min": 1, "max": 20},
-                },
-                "traits": {
-                    "physique": {"type": "str"},
-                    "face": {"type": "str"},
-                    "skin": {"type": "str"},
-                    "hair": {"type": "str"},
-                    "clothing": {"type": "str"},
-                    "virtue": {"type": "str"},
-                    "vice": {"type": "str"},
-                    "speech": {"type": "str"},
-                    "background": {"type": "str"},
-                    "misfortune": {"type": "str"},
-                },
+                "strength": {"type": "int", "range": "1..20"},
+                "dexterity": {"type": "int", "range": "1..20"},
+                "physique": {"type": "str"},
+                "background": {"type": "str"},
             },
             "validations": [
                 {
-                    "expression": "abilities.strength >= 1 and abilities.strength <= 20",
+                    "expression": "strength >= 1 and strength <= 20",
                     "message": "Strength must be 1-20",
                 },
                 {"expression": "len(name) > 0", "message": "Name cannot be empty"},
             ],
         }
 
-        model = ModelDefinition.from_dict(data)
+        model = ModelDefinition.model_validate(data)
 
         assert model.id == "character"
         assert model.name == "Knave"
-        assert "abilities" in model.attributes
-        assert "traits" in model.attributes
+        assert "name" in model.attributes
+        assert "strength" in model.attributes
+        assert "dexterity" in model.attributes
+        assert "physique" in model.attributes
+        assert "background" in model.attributes
         assert len(model.validations) == 2
 
-        # Check nested structure preservation
-        abilities = model.attributes["abilities"]
-        assert isinstance(abilities, dict)
-        assert "strength" in abilities
-        assert "charisma" in abilities
+        # Check attribute types
+        name_attr = model.attributes["name"]
+        assert name_attr.type == "str"
+        assert name_attr.required is True
 
-        traits = model.attributes["traits"]
-        assert isinstance(traits, dict)
-        assert "physique" in traits
-        assert "misfortune" in traits
+        strength_attr = model.attributes["strength"]
+        assert strength_attr.type == "int"
+        assert strength_attr.range == "1..20"

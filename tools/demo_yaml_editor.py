@@ -10,8 +10,9 @@ import tempfile
 from pathlib import Path
 
 from PyQt6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget
-from grimoire_studio.ui.views.yaml_editor_view import YamlEditorView
+
 from grimoire_studio.ui.components.output_console import OutputConsole
+from grimoire_studio.ui.views.yaml_editor_view import YamlEditorView
 
 
 def create_sample_yaml_file() -> Path:
@@ -43,7 +44,7 @@ attributes:
         minimum: 1
         maximum: 20
       dexterity:
-        type: integer  
+        type: integer
         minimum: 1
         maximum: 20
       intelligence:
