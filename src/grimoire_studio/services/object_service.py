@@ -19,7 +19,7 @@ from grimoire_model import (  # Explicit import - fail fast if not available
     validate_model_data,
 )
 
-from ..models.grimoire_definitions import CompleteSystem
+from ..models.grimoire_definitions import CompleteSystem, FlowDefinition
 
 logger = get_logger(__name__)
 
@@ -192,3 +192,232 @@ class ObjectInstantiationService:
             error_msg = f"Failed to update game object: {e}"
             logger.error(error_msg)
             raise RuntimeError(error_msg) from e
+
+    def instantiate_flow_input(
+        self, flow_def: FlowDefinition, input_data: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Instantiate flow input objects based on flow definition types.
+
+        Args:
+            flow_def: Flow definition containing input specifications
+            input_data: Dictionary mapping input IDs to their values
+
+        Returns:
+            Dictionary of instantiated and validated input objects
+
+        Raises:
+            ValueError: If required inputs are missing or invalid
+            RuntimeError: If instantiation fails
+        """
+        logger.debug(f"Instantiating flow inputs for flow: {flow_def.id}")
+        instantiated_inputs = {}
+
+        try:
+            for flow_input in flow_def.inputs:
+                input_id = flow_input.id
+                input_type = flow_input.type
+
+                # Check if required input is provided
+                if flow_input.required and input_id not in input_data:
+                    raise ValueError(f"Required input '{input_id}' not provided")
+
+                # Skip optional inputs that aren't provided
+                if input_id not in input_data:
+                    logger.debug(f"Optional input '{input_id}' not provided, skipping")
+                    continue
+
+                value = input_data[input_id]
+
+                # Handle primitive types directly
+                if input_type in ("str", "int", "float", "bool"):
+                    instantiated_inputs[input_id] = self._validate_primitive_type(
+                        value, input_type, f"input '{input_id}'"
+                    )
+                # Handle model types
+                elif input_type in self.system.models:
+                    # Ensure the value has the model type specified
+                    if isinstance(value, dict) and "model" not in value:
+                        value = {"model": input_type, **value}
+                    instantiated_inputs[input_id] = self.create_object(value)
+                else:
+                    # For other types, validate as-is but log a warning
+                    logger.warning(
+                        f"Unknown input type '{input_type}' for input '{input_id}', "
+                        "using value as-is"
+                    )
+                    instantiated_inputs[input_id] = value
+
+            logger.info(
+                f"Successfully instantiated {len(instantiated_inputs)} flow inputs"
+            )
+            return instantiated_inputs
+
+        except Exception as e:
+            error_msg = f"Failed to instantiate flow inputs: {e}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg) from e
+
+    def instantiate_flow_output(
+        self, flow_def: FlowDefinition, output_data: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Instantiate flow output objects based on flow definition types.
+
+        Args:
+            flow_def: Flow definition containing output specifications
+            output_data: Dictionary mapping output IDs to their values
+
+        Returns:
+            Dictionary of instantiated and validated output objects
+
+        Raises:
+            RuntimeError: If instantiation fails
+        """
+        logger.debug(f"Instantiating flow outputs for flow: {flow_def.id}")
+        instantiated_outputs = {}
+
+        try:
+            for flow_output in flow_def.outputs:
+                output_id = flow_output.id
+                output_type = flow_output.type
+
+                # Skip outputs not present in data
+                if output_id not in output_data:
+                    logger.debug(f"Output '{output_id}' not present in data, skipping")
+                    continue
+
+                value = output_data[output_id]
+
+                # Handle primitive types directly
+                if output_type in ("str", "int", "float", "bool"):
+                    instantiated_outputs[output_id] = self._validate_primitive_type(
+                        value, output_type, f"output '{output_id}'"
+                    )
+                # Handle model types
+                elif output_type in self.system.models:
+                    # Ensure the value has the model type specified
+                    if isinstance(value, dict) and "model" not in value:
+                        value = {"model": output_type, **value}
+
+                    # Only validate if specified in flow definition
+                    if flow_output.validate:
+                        instantiated_outputs[output_id] = self.create_object(value)
+                    else:
+                        instantiated_outputs[output_id] = value
+                else:
+                    # For other types, use value as-is
+                    logger.debug(
+                        f"Using output type '{output_type}' for output '{output_id}' "
+                        "as-is"
+                    )
+                    instantiated_outputs[output_id] = value
+
+            logger.info(
+                f"Successfully instantiated {len(instantiated_outputs)} flow outputs"
+            )
+            return instantiated_outputs
+
+        except Exception as e:
+            error_msg = f"Failed to instantiate flow outputs: {e}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg) from e
+
+    def instantiate_flow_variable(
+        self, flow_def: FlowDefinition, variable_data: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Instantiate flow variable objects based on flow definition types.
+
+        Args:
+            flow_def: Flow definition containing variable specifications
+            variable_data: Dictionary mapping variable IDs to their values
+
+        Returns:
+            Dictionary of instantiated and validated variable objects
+
+        Raises:
+            RuntimeError: If instantiation fails
+        """
+        logger.debug(f"Instantiating flow variables for flow: {flow_def.id}")
+        instantiated_variables = {}
+
+        try:
+            for flow_var in flow_def.variables:
+                var_id = flow_var.id
+                var_type = flow_var.type
+
+                # Skip variables not present in data
+                if var_id not in variable_data:
+                    logger.debug(f"Variable '{var_id}' not present in data, skipping")
+                    continue
+
+                value = variable_data[var_id]
+
+                # Handle primitive types directly
+                if var_type in ("str", "int", "float", "bool"):
+                    instantiated_variables[var_id] = self._validate_primitive_type(
+                        value, var_type, f"variable '{var_id}'"
+                    )
+                # Handle model types
+                elif var_type in self.system.models:
+                    # Ensure the value has the model type specified
+                    if isinstance(value, dict) and "model" not in value:
+                        value = {"model": var_type, **value}
+
+                    # Only validate if specified in flow definition
+                    if flow_var.validate:
+                        instantiated_variables[var_id] = self.create_object(value)
+                    else:
+                        instantiated_variables[var_id] = value
+                else:
+                    # For other types, use value as-is
+                    logger.debug(
+                        f"Using variable type '{var_type}' for variable '{var_id}' "
+                        "as-is"
+                    )
+                    instantiated_variables[var_id] = value
+
+            logger.info(
+                f"Successfully instantiated {len(instantiated_variables)} flow variables"
+            )
+            return instantiated_variables
+
+        except Exception as e:
+            error_msg = f"Failed to instantiate flow variables: {e}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg) from e
+
+    def _validate_primitive_type(
+        self, value: Any, expected_type: str, context: str
+    ) -> Any:
+        """Validate and convert primitive type values.
+
+        Args:
+            value: Value to validate
+            expected_type: Expected primitive type (str, int, float, bool)
+            context: Context string for error messages
+
+        Returns:
+            Validated and converted value
+
+        Raises:
+            ValueError: If value cannot be converted to expected type
+        """
+        try:
+            if expected_type == "str":
+                return str(value)
+            elif expected_type == "int":
+                return int(value)
+            elif expected_type == "float":
+                return float(value)
+            elif expected_type == "bool":
+                # Handle common boolean representations
+                if isinstance(value, bool):
+                    return value
+                if isinstance(value, str):
+                    return value.lower() in ("true", "yes", "1", "on")
+                return bool(value)
+            else:
+                raise ValueError(f"Unsupported primitive type: {expected_type}")
+        except (ValueError, TypeError) as e:
+            raise ValueError(
+                f"Cannot convert {context} value '{value}' to type '{expected_type}': {e}"
+            ) from e
