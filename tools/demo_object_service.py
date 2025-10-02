@@ -137,7 +137,14 @@ def demo_object_service():
     print("5️⃣ Demonstrating validation:")
 
     # Valid data
-    valid_data = {"model": "character", "name": "Legolas", "class": "rogue", "level": 8, "hitpoints": 70, "stats": {"strength": 15, "dexterity": 20, "constitution": 12}}
+    valid_data = {
+        "model": "character",
+        "name": "Legolas",
+        "class": "rogue",
+        "level": 8,
+        "hitpoints": 70,
+        "stats": {"strength": 15, "dexterity": 20, "constitution": 12},
+    }
     is_valid, errors = service.validate_object(valid_data)
     print(f"  ✅ Valid data check: {is_valid}, errors: {errors}")
 

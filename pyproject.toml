@@ -31,7 +31,7 @@ dependencies = [
     "pyyaml>=6.0",
     "pygments>=2.14.0",  # Required for YAML syntax highlighting
     "grimoire-logging>=0.1.0",
-    "grimoire-model>=0.2.0",  # Object instantiation and validation
+    "grimoire-model>=0.2.1",  # Object instantiation and validation
     # Note: Other GRIMOIRE libraries will be added when available
     # "grimoire-context>=1.0.0", 
     # "wyrdbound-dice>=1.0.0",
