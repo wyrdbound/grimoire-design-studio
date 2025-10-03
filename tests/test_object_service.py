@@ -272,14 +272,14 @@ class TestFlowInstantiation:
         service = ObjectInstantiationService(sample_system)
 
         # Test all primitive types
-        assert service._validate_primitive_type("hello", "str", "test") == "hello"
-        assert service._validate_primitive_type(42, "int", "test") == 42
-        assert service._validate_primitive_type("42", "int", "test") == 42
-        assert service._validate_primitive_type(3.14, "float", "test") == 3.14
-        assert service._validate_primitive_type("3.14", "float", "test") == 3.14
-        assert service._validate_primitive_type(True, "bool", "test") is True
-        assert service._validate_primitive_type("true", "bool", "test") is True
-        assert service._validate_primitive_type("false", "bool", "test") is False
+        assert service.validate_primitive_type("hello", "str", "test") == "hello"
+        assert service.validate_primitive_type(42, "int", "test") == 42
+        assert service.validate_primitive_type("42", "int", "test") == 42
+        assert service.validate_primitive_type(3.14, "float", "test") == 3.14
+        assert service.validate_primitive_type("3.14", "float", "test") == 3.14
+        assert service.validate_primitive_type(True, "bool", "test") is True
+        assert service.validate_primitive_type("true", "bool", "test") is True
+        assert service.validate_primitive_type("false", "bool", "test") is False
 
     def test_validate_primitive_type_conversion_error(self, sample_system):
         """Test primitive type validation with conversion error."""
@@ -290,7 +290,7 @@ class TestFlowInstantiation:
         with pytest.raises(
             ValueError, match="Cannot convert test value 'invalid' to type 'int'"
         ):
-            service._validate_primitive_type("invalid", "int", "test")
+            service.validate_primitive_type("invalid", "int", "test")
 
     def test_validate_primitive_type_unsupported_type(self, sample_system):
         """Test primitive type validation with unsupported type."""
@@ -299,7 +299,7 @@ class TestFlowInstantiation:
         service = ObjectInstantiationService(sample_system)
 
         with pytest.raises(ValueError, match="Unsupported primitive type: invalid"):
-            service._validate_primitive_type("value", "invalid", "test")
+            service.validate_primitive_type("value", "invalid", "test")
 
     def test_flow_input_unknown_type(self, sample_flow_system):
         """Test flow input instantiation with unknown type."""
