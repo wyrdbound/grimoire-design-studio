@@ -230,7 +230,7 @@ class ObjectInstantiationService:
 
                 # Handle primitive types directly
                 if input_type in ("str", "int", "float", "bool"):
-                    instantiated_inputs[input_id] = self._validate_primitive_type(
+                    instantiated_inputs[input_id] = self.validate_primitive_type(
                         value, input_type, f"input '{input_id}'"
                     )
                 # Handle model types
@@ -289,7 +289,7 @@ class ObjectInstantiationService:
 
                 # Handle primitive types directly
                 if output_type in ("str", "int", "float", "bool"):
-                    instantiated_outputs[output_id] = self._validate_primitive_type(
+                    instantiated_outputs[output_id] = self.validate_primitive_type(
                         value, output_type, f"output '{output_id}'"
                     )
                 # Handle model types
@@ -353,7 +353,7 @@ class ObjectInstantiationService:
 
                 # Handle primitive types directly
                 if var_type in ("str", "int", "float", "bool"):
-                    instantiated_variables[var_id] = self._validate_primitive_type(
+                    instantiated_variables[var_id] = self.validate_primitive_type(
                         value, var_type, f"variable '{var_id}'"
                     )
                 # Handle model types
@@ -385,15 +385,18 @@ class ObjectInstantiationService:
             logger.error(error_msg)
             raise RuntimeError(error_msg) from e
 
-    def _validate_primitive_type(
-        self, value: Any, expected_type: str, context: str
+    def validate_primitive_type(
+        self, value: Any, expected_type: str, context: str = "value"
     ) -> Any:
         """Validate and convert primitive type values.
+
+        This is a public method that can be used by other services to ensure
+        type consistency when working with flow variables, outputs, etc.
 
         Args:
             value: Value to validate
             expected_type: Expected primitive type (str, int, float, bool)
-            context: Context string for error messages
+            context: Context string for error messages (default: "value")
 
         Returns:
             Validated and converted value
