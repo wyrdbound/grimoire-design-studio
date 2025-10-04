@@ -33,9 +33,9 @@ dependencies = [
     "grimoire-logging>=0.1.0",
     "grimoire-model>=0.2.1",  # Object instantiation and validation
     "grimoire-context>=0.2.0",  # Flow execution context management
+    "wyrdbound-dice>=0.0.1",  # Dice rolling
+    "wyrdbound-rng>=0.0.1",  # Name generation
     # Note: Other GRIMOIRE libraries will be added when available
-    # "wyrdbound-dice>=1.0.0",
-    # "wyrdbound-rng>=1.0.0",
     # "langchain>=0.1.0",
     # "prefect>=2.0.0",
 ]
