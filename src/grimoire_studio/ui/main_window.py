@@ -262,7 +262,9 @@ class MainWindow(QMainWindow):
         self._action_run_flow.setShortcut(QKeySequence("F5"))
         self._action_run_flow.setStatusTip("Run a flow from the current project")
         self._action_run_flow.setEnabled(False)  # Enabled when project is loaded
-        # self._action_run_flow.triggered.connect(self._on_run_flow)
+        self._action_run_flow.triggered.connect(
+            self._on_test_flow
+        )  # Connect to test flow handler
         flow_menu.addAction(self._action_run_flow)
 
         # Test Flow action
@@ -270,7 +272,7 @@ class MainWindow(QMainWindow):
         self._action_test_flow.setShortcut(QKeySequence("Shift+F5"))
         self._action_test_flow.setStatusTip("Test a flow with sample inputs")
         self._action_test_flow.setEnabled(False)
-        # self._action_test_flow.triggered.connect(self._on_test_flow)
+        self._action_test_flow.triggered.connect(self._on_test_flow)
         flow_menu.addAction(self._action_test_flow)
 
         # Help Menu
@@ -1233,6 +1235,263 @@ class MainWindow(QMainWindow):
         current_editor._perform_validation(force_validation=True)
         self.set_status(f"Validation completed for: {current_file.name}")
 
+    def _on_test_flow(self) -> None:
+        """Handle test flow action."""
+        self._logger.info("=" * 60)
+        self._logger.info("TEST FLOW ACTION TRIGGERED")
+        self._logger.info("=" * 60)
+        self.set_status("Starting flow test...")
+
+        # Get the currently open file
+        current_editor = self._get_current_editor()
+        if not current_editor:
+            self._logger.warning("No file open for testing")
+            self.set_status("No file open for testing")
+            QMessageBox.warning(
+                self,
+                "No File Open",
+                "Please open a flow file to test it.",
+            )
+            return
+
+        current_file = current_editor.get_file_path()
+        if not current_file:
+            self._logger.warning("Current editor has no file path")
+            self.set_status("Current editor has no file path")
+            return
+
+        self._logger.info(f"Testing flow file: {current_file}")
+
+        # Check if it's a flow file
+        if not current_file.name.endswith((".yaml", ".yml")):
+            self._logger.warning(f"File {current_file.name} is not a YAML file")
+            QMessageBox.warning(
+                self,
+                "Invalid File Type",
+                "Please open a YAML flow file to test it.",
+            )
+            return
+
+        # Load and parse the flow definition
+        try:
+            import yaml
+
+            from ..models.grimoire_definitions import FlowDefinition
+            from ..services.flow_service import FlowExecutionService
+            from .dialogs.flow_test_dialog import FlowTestDialog
+
+            self._logger.debug(f"Loading flow from {current_file}")
+            with open(current_file, encoding="utf-8") as f:
+                flow_data = yaml.safe_load(f)
+
+            # Check if it's a flow
+            if not isinstance(flow_data, dict) or flow_data.get("kind") != "flow":
+                self._logger.warning(
+                    f"File {current_file.name} is not a flow (kind={flow_data.get('kind') if isinstance(flow_data, dict) else 'not a dict'})"
+                )
+                QMessageBox.warning(
+                    self,
+                    "Not a Flow",
+                    "The current file is not a flow definition.",
+                )
+                return
+
+            # Parse flow definition
+            self._logger.debug(f"Parsing flow definition from {current_file.name}")
+            flow_def = FlowDefinition.from_dict(flow_data)
+            self._logger.info(
+                f"Flow loaded: {flow_def.name} with {len(flow_def.inputs)} inputs"
+            )
+
+            # Show input dialog and get values
+            self._logger.debug("Showing flow input dialog")
+            input_values = FlowTestDialog.get_flow_inputs(flow_def, self)
+            if input_values is None:
+                self._logger.info("Flow test cancelled by user")
+                self.set_status("Flow test cancelled")
+                return
+
+            self._logger.info(f"Flow inputs collected: {input_values}")
+
+            # Execute the flow
+            from datetime import datetime
+
+            execution_start_time = datetime.now()
+            self.set_status(f"Executing flow: {flow_def.name}...")
+            self._output_console.switch_to_execution_tab()
+
+            # Log execution start with timestamp
+            timestamp_str = execution_start_time.strftime("%Y-%m-%d %H:%M:%S")
+            self._output_console.display_execution_output(
+                f"=== Testing Flow: {flow_def.name} ===", "info", auto_switch=False
+            )
+            self._output_console.display_execution_output(
+                f"Started: {timestamp_str}", "info", auto_switch=False
+            )
+            self._output_console.display_execution_output(
+                f"Input values: {input_values}", "info", auto_switch=False
+            )
+
+            try:
+                # Load the system from the current project
+                current_project = self._project_browser.get_current_project()
+                if not current_project:
+                    raise RuntimeError("No project loaded")
+
+                # Load system using ProjectManager
+                from PyQt6.QtCore import Qt
+                from PyQt6.QtWidgets import QProgressDialog
+
+                from ..core.project_manager import ProjectManager
+                from ..services.object_service import ObjectInstantiationService
+
+                project_manager = ProjectManager()
+                system = project_manager.load_system(current_project.project_path)
+
+                # Create object service for flow execution
+                object_service = ObjectInstantiationService(system)
+
+                # Create flow execution service
+                flow_service = FlowExecutionService(system, object_service)
+
+                # Create progress dialog - initialize early so it's always defined
+                progress = QProgressDialog(
+                    f"Executing flow: {flow_def.name}...",
+                    "Cancel",
+                    0,
+                    len(flow_def.steps) + 1,
+                    self,
+                )
+                progress.setWindowTitle("Flow Execution")
+                progress.setWindowModality(Qt.WindowModality.WindowModal)
+                progress.setValue(0)
+
+                try:
+                    # Track execution state
+                    current_step = [0]  # Use list to allow mutation in callback
+                    execution_cancelled = [False]
+
+                    def on_step_complete(step_id: str, context: dict) -> None:
+                        """Callback when a flow step completes."""
+                        current_step[0] += 1
+                        progress.setValue(current_step[0])
+                        progress.setLabelText(
+                            f"Executing flow: {flow_def.name}...\nCompleted step: {step_id}"
+                        )
+                        self._output_console.display_execution_output(
+                            f"Step '{step_id}' completed", "info", auto_switch=False
+                        )
+
+                        # Check if user cancelled
+                        if progress.wasCanceled():
+                            execution_cancelled[0] = True
+                            raise RuntimeError("Flow execution cancelled by user")
+
+                    def on_action_execute(action_type: str, params: dict) -> None:
+                        """Callback when a flow action executes."""
+                        self._logger.debug(
+                            f"Action executed: {action_type} with {params}"
+                        )
+
+                    # Execute the flow with callbacks
+                    result = flow_service.execute_flow(
+                        flow_def.id,
+                        input_values,
+                        on_step_complete=on_step_complete,
+                        on_action_execute=on_action_execute,
+                    )
+
+                    # Mark as complete
+                    progress.setValue(len(flow_def.steps) + 1)
+                    progress.close()
+
+                    # Calculate execution duration
+                    execution_end_time = datetime.now()
+                    duration = (
+                        execution_end_time - execution_start_time
+                    ).total_seconds()
+
+                    # Display results with timing info
+                    self._output_console.display_execution_output(
+                        "=== Flow Execution Completed ===",
+                        "success",
+                        auto_switch=False,
+                    )
+                    self._output_console.display_execution_output(
+                        f"Duration: {duration:.2f} seconds", "info", auto_switch=False
+                    )
+                    self._output_console.display_execution_output(
+                        f"Result: {result}", "info", auto_switch=False
+                    )
+                    self.set_status(f"Flow '{flow_def.name}' executed successfully")
+
+                    # Log successful execution
+                    self._logger.info(
+                        f"Flow '{flow_def.name}' executed successfully in {duration:.2f}s"
+                    )
+
+                except Exception as exec_error:
+                    # Close progress dialog
+                    progress.close()
+
+                    # Calculate execution duration for failed execution
+                    execution_end_time = datetime.now()
+                    duration = (
+                        execution_end_time - execution_start_time
+                    ).total_seconds()
+
+                    self._logger.error(
+                        f"Flow execution failed after {duration:.2f}s: {exec_error}"
+                    )
+                    self._output_console.display_execution_output(
+                        "=== Flow Execution Failed ===", "error", auto_switch=False
+                    )
+                    self._output_console.display_execution_output(
+                        f"Duration before failure: {duration:.2f} seconds",
+                        "info",
+                        auto_switch=False,
+                    )
+                    self._output_console.display_execution_output(
+                        f"Error: {exec_error}", "error", auto_switch=False
+                    )
+                    self.set_status(f"Flow execution failed: {exec_error}")
+                    QMessageBox.critical(
+                        self,
+                        "Flow Execution Error",
+                        f"Flow execution failed:\n{exec_error}",
+                    )
+
+            except Exception as load_error:
+                # Handle errors that occur before flow execution (e.g., loading system)
+                self._logger.error(f"Failed to set up flow execution: {load_error}")
+                self._output_console.display_execution_output(
+                    "=== Flow Setup Failed ===", "error", auto_switch=False
+                )
+                self._output_console.display_execution_output(
+                    f"Error: {load_error}", "error", auto_switch=False
+                )
+                self.set_status(f"Flow setup failed: {load_error}")
+                QMessageBox.critical(
+                    self,
+                    "Flow Setup Error",
+                    f"Failed to set up flow execution:\n{load_error}",
+                )
+
+        except Exception as e:
+            import traceback
+
+            error_msg = f"Failed to test flow: {e}"
+            self._logger.error(error_msg)
+            self._logger.error(f"Traceback: {traceback.format_exc()}")
+            self.set_status(error_msg)
+
+            # Show detailed error to user
+            QMessageBox.critical(
+                self,
+                "Flow Test Error",
+                f"Failed to test flow:\n\n{e}\n\nCheck logs for details.",
+            )
+
     def _on_about(self) -> None:
         """Handle about action."""
         from PyQt6.QtWidgets import QMessageBox
@@ -1302,6 +1561,41 @@ class MainWindow(QMainWindow):
         self._action_run_flow.setEnabled(enabled)
         self._action_test_flow.setEnabled(enabled)
 
+    def _is_flow_file(self, file_path: Path) -> bool:
+        """
+        Check if a file is a flow definition.
+
+        Args:
+            file_path: Path to the file to check
+
+        Returns:
+            True if the file is a flow definition, False otherwise
+        """
+        if file_path.suffix.lower() not in (".yaml", ".yml"):
+            return False
+
+        # First check: is it in a "flows" directory?
+        # This is a quick heuristic that doesn't require reading the file
+        if "flows" in file_path.parts:
+            self._logger.debug(f"File {file_path.name} is in flows directory")
+            return True
+
+        # Second check: parse the YAML to check the "kind" field
+        try:
+            import yaml
+
+            with open(file_path, encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+
+            is_flow = isinstance(data, dict) and data.get("kind") == "flow"
+            self._logger.debug(
+                f"File {file_path.name} kind check: {data.get('kind') if isinstance(data, dict) else 'not a dict'}"
+            )
+            return is_flow
+        except Exception as e:
+            self._logger.debug(f"Error checking if {file_path.name} is a flow: {e}")
+            return False
+
     def enable_file_actions(self, enabled: bool) -> None:
         """
         Enable or disable file-related actions.
@@ -1315,6 +1609,30 @@ class MainWindow(QMainWindow):
 
         # Enable/disable tab actions
         self._action_close_tab.setEnabled(enabled)
+
+        # Enable Test Flow action if current file is a flow YAML
+        if enabled:
+            current_editor = self._get_current_editor()
+            if current_editor:
+                file_path = current_editor.get_file_path()
+                if file_path:
+                    is_flow = self._is_flow_file(file_path)
+                    self._logger.debug(
+                        f"Checking if {file_path.name} is a flow: {is_flow}"
+                    )
+                    self._action_test_flow.setEnabled(is_flow)
+                    self._action_run_flow.setEnabled(is_flow)  # Enable both actions
+                else:
+                    self._logger.debug("No file path for current editor")
+                    self._action_test_flow.setEnabled(False)
+                    self._action_run_flow.setEnabled(False)
+            else:
+                self._logger.debug("No current editor")
+                self._action_test_flow.setEnabled(False)
+                self._action_run_flow.setEnabled(False)
+        else:
+            self._action_test_flow.setEnabled(False)
+            self._action_run_flow.setEnabled(False)
 
         # Save all and tab navigation actions depend on having multiple tabs
         self._update_multi_tab_actions()

@@ -410,6 +410,25 @@ This plan provides step-by-step instructions for building the GRIMOIRE Design St
 
 **Test:** Test various flows through UI and verify results display correctly
 
+### Step 6.4: Flow Step Implementation
+
+**Goal:** Implement basic flow step types
+
+**Tasks:**
+
+1. Implement `dice_roll` steps with expression parsing
+2. Implement `dice_sequence` steps with multiple rolls
+3. Implement `table_roll` steps with table integration
+4. Implement `player_choice` steps with UI integration
+5. Implement `player_input` steps with input validation
+6. Implement `completion` steps satisfying spec requirements
+7. Support conditional logic and step branching
+8. Implement step parameter templating and substitution per specification in spec/ directory
+
+**Deliverable:** Basic flow step types implemented and tested with a demo in the tools/ directory
+
+**Test:** Create flows using all step types and verify correct execution
+
 ---
 
 ## Phase 7: Advanced UI Features (Weeks 11-13)
@@ -509,12 +528,11 @@ This plan provides step-by-step instructions for building the GRIMOIRE Design St
 
 **Tasks:**
 
-1. Implement `llm_generation` steps with prompt integration
-2. Implement `dice_roll` steps with expression parsing
-3. Implement `table_roll` steps with table integration
-4. Implement `object_creation` and `object_update` steps
-5. Add conditional logic and step branching
-6. Implement step parameter templating and substitution
+6. Implement `name_generation` steps with name service
+7. Implement `llm_generation` steps with prompt integration
+8. Implement `flow_call` steps for nested flows
+9. Add conditional logic and step branching
+10. Implement step parameter templating and substitution
 
 **Deliverable:** Complete implementation of all GRIMOIRE step types
 
