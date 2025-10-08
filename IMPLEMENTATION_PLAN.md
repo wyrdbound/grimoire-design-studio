@@ -410,7 +410,7 @@ This plan provides step-by-step instructions for building the GRIMOIRE Design St
 
 **Test:** Test various flows through UI and verify results display correctly
 
-### Step 6.4: Flow Step Implementation
+### Step 6.4: Basic Flow Step Implementation
 
 **Goal:** Implement basic flow step types
 
@@ -431,81 +431,9 @@ This plan provides step-by-step instructions for building the GRIMOIRE Design St
 
 ---
 
-## Phase 7: Advanced UI Features (Weeks 11-13)
+## Phase 7: Full Flow Execution (Weeks 11-13)
 
-### Step 7.1: Visual Flow Designer Foundation
-
-**Goal:** Create foundation for visual flow editing
-
-**Tasks:**
-
-1. Create `ui/views/flow_view.py` with `FlowDesignerView` class
-2. Implement split view (visual designer top, YAML editor bottom)
-3. Create `FlowCanvas` with QGraphicsView for visual editing
-4. Add basic flow visualization (boxes for steps, arrows for connections)
-5. Implement read-only flow display from YAML
-6. Add zoom and pan functionality
-
-**Deliverable:** Visual flow designer that can display flows graphically
-
-**Test:** Load various flows and verify they display correctly in visual designer
-
-### Step 7.2: Model Designer Enhancement
-
-**Goal:** Improve model editing with visual tools
-
-**Tasks:**
-
-1. Create `ui/views/model_view.py` with enhanced `ModelDesignerView`
-2. Add split view (visual model designer, YAML editor)
-3. Implement attribute table editing
-4. Add model inheritance visualization
-5. Implement validation rules editing interface
-6. Add model preview with sample data
-
-**Deliverable:** Enhanced model designer with visual editing tools
-
-**Test:** Edit models through visual interface and verify YAML updates correctly
-
-### Step 7.3: Compendium Browser
-
-**Goal:** Implement advanced compendium content management
-
-**Tasks:**
-
-1. Create `ui/views/compendium_view.py` with `CompendiumBrowserView`
-2. Implement searchable/filterable content display
-3. Add item editing with property panel integration
-4. Implement bulk operations (import, export, batch edit)
-5. Add content validation and error display
-6. Connect to object instantiation service for live validation
-
-**Deliverable:** Advanced compendium browser with search, filter, and edit capabilities
-
-**Test:** Load large compendiums, search/filter content, edit items, verify performance
-
-### Step 7.4: Enhanced Validation
-
-**Goal:** Implement comprehensive validation with business logic
-
-**Tasks:**
-
-1. Enhance `YamlValidator` with schema-based validation
-2. Add business logic validation rules
-3. Implement cross-reference validation (model inheritance, flow steps, etc.)
-4. Add validation configuration and rule customization
-5. Implement validation caching for performance
-6. Add detailed validation reporting
-
-**Deliverable:** Comprehensive validation system with detailed error reporting
-
-**Test:** Validate complex systems with various error types and verify all are caught
-
----
-
-## Phase 8: Full Flow Execution (Weeks 13-15)
-
-### Step 8.1: Prefect Integration
+### Step 7.1: Prefect Integration
 
 **Goal:** Implement full Prefect workflow execution
 
@@ -522,7 +450,7 @@ This plan provides step-by-step instructions for building the GRIMOIRE Design St
 
 **Test:** Execute complex flows with parallel steps and verify correct execution
 
-### Step 8.2: Advanced Step Types
+### Step 7.2: Advanced Step Types
 
 **Goal:** Implement all GRIMOIRE flow step types
 
@@ -538,7 +466,7 @@ This plan provides step-by-step instructions for building the GRIMOIRE Design St
 
 **Test:** Create flows using all step types and verify correct execution
 
-### Step 8.3: Flow Debugging Tools
+### Step 7.3: Flow Debugging Tools
 
 **Goal:** Add debugging and development tools for flows
 
@@ -554,6 +482,78 @@ This plan provides step-by-step instructions for building the GRIMOIRE Design St
 **Deliverable:** Complete flow debugging and development toolkit
 
 **Test:** Debug complex flows with breakpoints and verify debugging tools work
+
+---
+
+## Phase 8: Advanced UI Features (Weeks 13-15)
+
+### Step 8.1: Visual Flow Designer Foundation
+
+**Goal:** Create foundation for visual flow editing
+
+**Tasks:**
+
+1. Create `ui/views/flow_view.py` with `FlowDesignerView` class
+2. Implement split view (visual designer top, YAML editor bottom)
+3. Create `FlowCanvas` with QGraphicsView for visual editing
+4. Add basic flow visualization (boxes for steps, arrows for connections)
+5. Implement read-only flow display from YAML
+6. Add zoom and pan functionality
+
+**Deliverable:** Visual flow designer that can display flows graphically
+
+**Test:** Load various flows and verify they display correctly in visual designer
+
+### Step 8.2: Model Designer Enhancement
+
+**Goal:** Improve model editing with visual tools
+
+**Tasks:**
+
+1. Create `ui/views/model_view.py` with enhanced `ModelDesignerView`
+2. Add split view (visual model designer, YAML editor)
+3. Implement attribute table editing
+4. Add model inheritance visualization
+5. Implement validation rules editing interface
+6. Add model preview with sample data
+
+**Deliverable:** Enhanced model designer with visual editing tools
+
+**Test:** Edit models through visual interface and verify YAML updates correctly
+
+### Step 8.3: Compendium Browser
+
+**Goal:** Implement advanced compendium content management
+
+**Tasks:**
+
+1. Create `ui/views/compendium_view.py` with `CompendiumBrowserView`
+2. Implement searchable/filterable content display
+3. Add item editing with property panel integration
+4. Implement bulk operations (import, export, batch edit)
+5. Add content validation and error display
+6. Connect to object instantiation service for live validation
+
+**Deliverable:** Advanced compendium browser with search, filter, and edit capabilities
+
+**Test:** Load large compendiums, search/filter content, edit items, verify performance
+
+### Step 8.4: Enhanced Validation
+
+**Goal:** Implement comprehensive validation with business logic
+
+**Tasks:**
+
+1. Enhance `YamlValidator` with schema-based validation
+2. Add business logic validation rules
+3. Implement cross-reference validation (model inheritance, flow steps, etc.)
+4. Add validation configuration and rule customization
+5. Implement validation caching for performance
+6. Add detailed validation reporting
+
+**Deliverable:** Comprehensive validation system with detailed error reporting
+
+**Test:** Validate complex systems with various error types and verify all are caught
 
 ---
 

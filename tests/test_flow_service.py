@@ -438,7 +438,7 @@ class TestActionExecution:
         assert "character_created" in caplog.text
 
     def test_action_display_value(self, flow_service, sample_system, caplog):
-        """Test display_value action."""
+        """Test display_value action basic functionality."""
         import logging
 
         caplog.set_level(logging.INFO)
@@ -466,7 +466,208 @@ class TestActionExecution:
         sample_system.flows["display_value_flow"] = flow
 
         flow_service.execute_flow("display_value_flow")
-        assert "test" in caplog.text
+
+        # Verify the display format shows both path and value
+        assert "variables.test_var: test" in caplog.text
+
+    def test_action_display_value_callback(self, flow_service, sample_system):
+        """Test display_value action with callback."""
+        callback_calls = []
+
+        def on_action_execute(action_type: str, action_data: dict) -> None:
+            callback_calls.append((action_type, action_data))
+
+        flow = FlowDefinition(
+            id="display_value_callback_flow",
+            kind="flow",
+            name="Display Value Callback Flow",
+            variables=[
+                FlowVariable(type="str", id="test_var", validate=False),
+            ],
+            steps=[
+                FlowStep(
+                    id="set_and_display",
+                    name="Set and Display",
+                    type="completion",
+                    actions=[
+                        {
+                            "set_value": {
+                                "path": "variables.test_var",
+                                "value": "callback_test",
+                            }
+                        },
+                        {"display_value": "variables.test_var"},
+                    ],
+                )
+            ],
+        )
+
+        sample_system.flows["display_value_callback_flow"] = flow
+
+        flow_service.execute_flow(
+            "display_value_callback_flow", on_action_execute=on_action_execute
+        )
+
+        # Verify callback was called for display_value action
+        display_calls = [call for call in callback_calls if call[0] == "display_value"]
+        assert len(display_calls) == 1
+
+        action_type, action_data = display_calls[0]
+        assert action_type == "display_value"
+        assert action_data["message"] == "variables.test_var: callback_test"
+
+    def test_action_display_value_missing_path(
+        self, flow_service, sample_system, caplog
+    ):
+        """Test display_value action with missing path."""
+        import logging
+
+        caplog.set_level(logging.WARNING)
+
+        flow = FlowDefinition(
+            id="display_value_missing_flow",
+            kind="flow",
+            name="Display Value Missing Flow",
+            steps=[
+                FlowStep(
+                    id="display_missing",
+                    name="Display Missing",
+                    type="completion",
+                    actions=[
+                        {"display_value": "nonexistent.path"},
+                    ],
+                )
+            ],
+        )
+
+        sample_system.flows["display_value_missing_flow"] = flow
+
+        flow_service.execute_flow("display_value_missing_flow")
+
+        # Verify warning message for missing path
+        assert "Cannot display: path not found: nonexistent.path" in caplog.text
+
+    def test_action_display_value_complex_object(
+        self, flow_service, sample_system, caplog
+    ):
+        """Test display_value action with complex object."""
+        import logging
+
+        caplog.set_level(logging.INFO)
+
+        flow = FlowDefinition(
+            id="display_complex_flow",
+            kind="flow",
+            name="Display Complex Flow",
+            variables=[
+                FlowVariable(type="dict", id="complex_var", validate=False),
+            ],
+            steps=[
+                FlowStep(
+                    id="set_and_display_complex",
+                    name="Set and Display Complex",
+                    type="completion",
+                    actions=[
+                        {
+                            "set_value": {
+                                "path": "variables.complex_var",
+                                "value": {"name": "Test", "level": 5},
+                            }
+                        },
+                        {"display_value": "variables.complex_var"},
+                    ],
+                )
+            ],
+        )
+
+        sample_system.flows["display_complex_flow"] = flow
+
+        flow_service.execute_flow("display_complex_flow")
+
+        # Verify complex object is displayed correctly
+        assert "variables.complex_var: {'name': 'Test', 'level': 5}" in caplog.text
+
+    def test_table_roll_action_callback(self, flow_service, sample_system):
+        """Test that table roll actions trigger callbacks."""
+        callback_calls = []
+
+        def on_action_execute(action_type: str, action_data: dict) -> None:
+            callback_calls.append((action_type, action_data))
+
+        # Add a simple table to the system for testing
+        from grimoire_studio.models.grimoire_definitions import TableDefinition
+
+        test_table = TableDefinition(
+            id="test_callback_table",
+            kind="table",
+            name="Test Callback Table",
+            roll="1d2",
+            entries=[
+                {"range": "1", "value": "First Option"},
+                {"range": "2", "value": "Second Option"},
+            ],
+        )
+        sample_system.tables["test_callback_table"] = test_table
+
+        flow = FlowDefinition(
+            id="table_callback_flow",
+            kind="flow",
+            name="Table Callback Flow",
+            variables=[
+                FlowVariable(type="str", id="result_var", validate=False),
+            ],
+            steps=[
+                FlowStep(
+                    id="roll_with_actions",
+                    name="Roll with Actions",
+                    type="table_roll",
+                    step_config={
+                        "tables": [
+                            {
+                                "table": "test_callback_table",
+                                "actions": [
+                                    {
+                                        "set_value": {
+                                            "path": "variables.result_var",
+                                            "value": "{{ result.entry }}",
+                                        }
+                                    },
+                                    {
+                                        "display_message": "Table rolled: {{ result.entry }}"
+                                    },
+                                    {"display_value": "variables.result_var"},
+                                ],
+                            }
+                        ]
+                    },
+                )
+            ],
+        )
+
+        sample_system.flows["table_callback_flow"] = flow
+
+        flow_service.execute_flow(
+            "table_callback_flow", on_action_execute=on_action_execute
+        )
+
+        # Verify callbacks were called for table actions
+        display_message_calls = [
+            call for call in callback_calls if call[0] == "display_message"
+        ]
+        display_value_calls = [
+            call for call in callback_calls if call[0] == "display_value"
+        ]
+
+        assert len(display_message_calls) == 1
+        assert len(display_value_calls) == 1
+
+        # Verify display_message content
+        _, message_data = display_message_calls[0]
+        assert "Table rolled:" in message_data["message"]
+
+        # Verify display_value content
+        _, value_data = display_value_calls[0]
+        assert "variables.result_var:" in value_data["message"]
 
     def test_action_validate_value_success(self, flow_service, sample_system):
         """Test validate_value action with valid object."""

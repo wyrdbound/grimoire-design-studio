@@ -406,6 +406,18 @@ class TableDefinition:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> TableDefinition:
         """Create TableDefinition from dictionary data."""
+        # Handle entries - convert from dict format to list format if needed
+        entries_data = data.get("entries", [])
+        processed_entries = []
+
+        if isinstance(entries_data, dict):
+            # Convert from "range: value" format to [{"range": "...", "value": "..."}]
+            for range_key, value in entries_data.items():
+                processed_entries.append({"range": str(range_key), "value": value})
+        elif isinstance(entries_data, list):
+            # Already in the correct format
+            processed_entries = entries_data
+
         return cls(
             id=data["id"],
             kind=data["kind"],
@@ -414,7 +426,7 @@ class TableDefinition:
             version=data.get("version", 1),
             roll=data.get("roll"),
             entry_type=data.get("entry_type", "str"),
-            entries=data.get("entries", []),
+            entries=processed_entries,
         )
 
 

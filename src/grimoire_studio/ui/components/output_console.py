@@ -16,6 +16,8 @@ from PyQt6.QtCore import QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QTextCharFormat, QTextCursor
 from PyQt6.QtWidgets import (
     QHBoxLayout,
+    QLabel,
+    QProgressBar,
     QPushButton,
     QTabWidget,
     QTextEdit,
@@ -167,6 +169,43 @@ class OutputConsole(QWidget):
         )
 
         layout.addWidget(self._execution_text)
+
+        # Progress bar section (initially hidden)
+        self._progress_container = QWidget()
+        progress_layout = QVBoxLayout(self._progress_container)
+        progress_layout.setContentsMargins(5, 5, 5, 5)
+        progress_layout.setSpacing(5)
+
+        # Progress label
+        self._progress_label = QLabel("")
+        self._progress_label.setStyleSheet("color: #6c757d; font-size: 11px;")
+        progress_layout.addWidget(self._progress_label)
+
+        # Progress bar
+        self._progress_bar = QProgressBar()
+        self._progress_bar.setMinimum(0)
+        self._progress_bar.setMaximum(100)
+        self._progress_bar.setValue(0)
+        self._progress_bar.setTextVisible(True)
+        self._progress_bar.setStyleSheet(
+            """
+            QProgressBar {
+                border: 1px solid #dee2e6;
+                border-radius: 3px;
+                background-color: #f8f9fa;
+                text-align: center;
+                height: 20px;
+            }
+            QProgressBar::chunk {
+                background-color: #17a2b8;
+                border-radius: 2px;
+            }
+            """
+        )
+        progress_layout.addWidget(self._progress_bar)
+
+        layout.addWidget(self._progress_container)
+        self._progress_container.hide()  # Hidden by default
 
         self._tab_widget.addTab(tab_widget, "Execution")
 
@@ -509,6 +548,55 @@ class OutputConsole(QWidget):
         self.clear_execution()
         self.clear_logs()
         self._logger.debug("All console tabs cleared")
+
+    # Flow execution progress methods
+
+    def start_flow_progress(self, flow_name: str, total_steps: int) -> None:
+        """
+        Show and initialize the flow execution progress bar.
+
+        Args:
+            flow_name: Name of the flow being executed
+            total_steps: Total number of steps in the flow
+        """
+        self._progress_label.setText(f"Executing flow: {flow_name}")
+        self._progress_bar.setMaximum(total_steps)
+        self._progress_bar.setValue(0)
+        self._progress_container.show()
+        self.switch_to_execution_tab()
+        self._logger.debug(f"Flow progress started: {flow_name} ({total_steps} steps)")
+
+    def update_flow_progress(self, current_step: int, step_name: str = "") -> None:
+        """
+        Update the flow execution progress.
+
+        Args:
+            current_step: Current step number (0-based or 1-based)
+            step_name: Optional name of the current step
+        """
+        self._progress_bar.setValue(current_step)
+        if step_name:
+            self._progress_label.setText(
+                f"Step {current_step}/{self._progress_bar.maximum()}: {step_name}"
+            )
+        self._logger.debug(f"Flow progress updated: step {current_step}")
+
+    def finish_flow_progress(self, success: bool = True) -> None:
+        """
+        Complete and hide the flow execution progress bar.
+
+        Args:
+            success: Whether the flow completed successfully
+        """
+        if success:
+            self._progress_bar.setValue(self._progress_bar.maximum())
+            self._progress_label.setText("Flow execution completed")
+        else:
+            self._progress_label.setText("Flow execution failed")
+
+        # Hide progress bar after a short delay
+        QTimer.singleShot(2000, self._progress_container.hide)
+        self._logger.debug(f"Flow progress finished: success={success}")
 
     # Utility methods
 

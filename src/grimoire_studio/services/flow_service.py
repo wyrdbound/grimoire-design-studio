@@ -9,6 +9,7 @@ if it is not available, following the principle of explicit errors over fallback
 
 from __future__ import annotations
 
+import uuid
 from typing import Any, Callable
 
 from grimoire_context import (
@@ -18,7 +19,26 @@ from grimoire_logging import get_logger
 from grimoire_model import Jinja2TemplateResolver
 
 from ..models.grimoire_definitions import CompleteSystem, FlowDefinition, FlowStep
+from .action_handlers.display_message import DisplayMessageActionHandler
+from .action_handlers.display_value import DisplayValueActionHandler
+from .action_handlers.log_event import LogEventActionHandler
+from .action_handlers.log_message import LogMessageActionHandler
+from .action_handlers.set_value import SetValueActionHandler
+from .action_handlers.swap_values import SwapValuesActionHandler
+from .action_handlers.validate_value import ValidateValueActionHandler
+from .dice_service import DiceService
+from .exceptions import FlowExecutionError
+from .llm_service import LLMConfig, LLMService
+from .name_service import NameService
 from .object_service import ObjectInstantiationService
+from .step_executors.completion import CompletionStepExecutor
+from .step_executors.dice_roll import DiceRollStepExecutor
+from .step_executors.dice_sequence import DiceSequenceStepExecutor
+from .step_executors.llm_generation import LLMGenerationStepExecutor
+from .step_executors.name_generation import NameGenerationStepExecutor
+from .step_executors.player_choice import PlayerChoiceStepExecutor
+from .step_executors.player_input import PlayerInputStepExecutor
+from .step_executors.table_roll import TableRollStepExecutor
 
 logger = get_logger(__name__)
 
@@ -32,12 +52,6 @@ class _TemplateResolverAdapter:
     def resolve_template(self, template_str: str, context_dict: dict[str, Any]) -> Any:
         """Resolve template with protocol-compliant parameter name."""
         return self._resolver.resolve_template(template_str, context_dict)
-
-
-class FlowExecutionError(Exception):
-    """Exception raised when flow execution fails."""
-
-    pass
 
 
 class FlowExecutionService:
@@ -57,13 +71,21 @@ class FlowExecutionService:
     """
 
     def __init__(
-        self, system: CompleteSystem, object_service: ObjectInstantiationService
+        self,
+        system: CompleteSystem,
+        object_service: ObjectInstantiationService,
+        dice_service: DiceService | None = None,
+        llm_service: LLMService | None = None,
+        name_service: NameService | None = None,
     ) -> None:
         """Initialize the flow execution service.
 
         Args:
             system: Complete GRIMOIRE system with flow definitions
             object_service: Service for object instantiation and validation
+            dice_service: Service for dice rolling (creates default if None)
+            llm_service: Service for LLM generation (creates default if None)
+            name_service: Service for name generation (creates default if None)
 
         Raises:
             RuntimeError: If initialization fails
@@ -73,6 +95,45 @@ class FlowExecutionService:
         self.template_resolver = _TemplateResolverAdapter(Jinja2TemplateResolver())
         self.current_context: GrimoireContext | None = None
         self.current_flow: FlowDefinition | None = None
+
+        # Initialize services (create defaults if not provided)
+        self.dice_service = dice_service or DiceService()
+        self.llm_service = llm_service or LLMService(LLMConfig(provider="mock"))
+        self.name_service = name_service or NameService()
+
+        # Initialize step executors
+        self._step_executors: dict[str, Any] = {
+            "completion": CompletionStepExecutor(),
+            "dice_roll": DiceRollStepExecutor(self.dice_service),
+            "dice_sequence": DiceSequenceStepExecutor(
+                self.dice_service, self._execute_action
+            ),
+            "table_roll": TableRollStepExecutor(
+                self.system, self.dice_service, self._execute_action
+            ),
+            "player_input": PlayerInputStepExecutor(),
+            "player_choice": PlayerChoiceStepExecutor(
+                self.template_resolver, self._execute_action
+            ),
+            "llm_generation": LLMGenerationStepExecutor(
+                self.system, self.llm_service, self._resolve_templates_in_dict
+            ),
+            "name_generation": NameGenerationStepExecutor(),
+        }
+
+        # Initialize action handlers
+        self._action_handlers: dict[str, Any] = {
+            "set_value": SetValueActionHandler(
+                self._get_expected_type_for_path, self._coerce_value_to_type
+            ),
+            "log_message": LogMessageActionHandler(),
+            "display_message": DisplayMessageActionHandler(),
+            "log_event": LogEventActionHandler(self._resolve_templates_in_dict),
+            "display_value": DisplayValueActionHandler(),
+            "validate_value": ValidateValueActionHandler(self.object_service),
+            "swap_values": SwapValuesActionHandler(),
+        }
+
         logger.info(f"Initialized FlowExecutionService for system: {system.system.id}")
 
     def execute_flow(
@@ -81,6 +142,7 @@ class FlowExecutionService:
         inputs: dict[str, Any] | None = None,
         on_step_complete: Callable[[str, dict[str, Any]], None] | None = None,
         on_action_execute: Callable[[str, dict[str, Any]], None] | None = None,
+        on_user_input: Callable[[FlowStep, dict[str, Any]], Any] | None = None,
     ) -> dict[str, Any]:
         """Execute a flow with the given inputs.
 
@@ -89,6 +151,7 @@ class FlowExecutionService:
             inputs: Dictionary of input values (or None for no inputs)
             on_step_complete: Optional callback when step completes
             on_action_execute: Optional callback when action executes
+            on_user_input: Optional callback for user input/choice steps
 
         Returns:
             Dictionary containing flow outputs
@@ -111,7 +174,7 @@ class FlowExecutionService:
 
             # Execute flow steps
             context = self._execute_steps(
-                flow_def, context, on_step_complete, on_action_execute
+                flow_def, context, on_step_complete, on_action_execute, on_user_input
             )
 
             # Extract outputs
@@ -174,6 +237,7 @@ class FlowExecutionService:
         context: GrimoireContext,
         on_step_complete: Callable[[str, dict[str, Any]], None] | None,
         on_action_execute: Callable[[str, dict[str, Any]], None] | None,
+        on_user_input: Callable[[FlowStep, dict[str, Any]], Any] | None,
     ) -> GrimoireContext:
         """Execute flow steps in sequence.
 
@@ -182,6 +246,7 @@ class FlowExecutionService:
             context: Current execution context
             on_step_complete: Optional callback when step completes
             on_action_execute: Optional callback when action executes
+            on_user_input: Optional callback for user input/choice steps
 
         Returns:
             Updated context after all steps execute
@@ -199,14 +264,28 @@ class FlowExecutionService:
             logger.debug(f"Executing step: {step.id} ({step.type})")
 
             # Execute the step
-            context, step_result = self._execute_step(step, context, on_action_execute)
+            context, step_result = self._execute_step(
+                step, context, on_action_execute, on_user_input
+            )
 
             # Notify callback if provided
             if on_step_complete:
                 on_step_complete(step.id, step_result)
 
             # Determine next step
-            if step.next_step:
+            # Check for next_step_override from player_choice first
+            if "next_step_override" in step_result:
+                next_step_id = step_result["next_step_override"]
+                next_index = next(
+                    (i for i, s in enumerate(flow_def.steps) if s.id == next_step_id),
+                    None,
+                )
+                if next_index is None:
+                    raise FlowExecutionError(
+                        f"Choice in step {step.id} references unknown next_step: {next_step_id}"
+                    )
+                current_step_index = next_index
+            elif step.next_step:
                 # Find the step with the specified ID
                 next_index = next(
                     (i for i, s in enumerate(flow_def.steps) if s.id == step.next_step),
@@ -229,51 +308,146 @@ class FlowExecutionService:
         step: FlowStep,
         context: GrimoireContext,
         on_action_execute: Callable[[str, dict[str, Any]], None] | None,
+        on_user_input: Callable[[FlowStep, dict[str, Any]], Any] | None,
     ) -> tuple[GrimoireContext, dict[str, Any]]:
-        """Execute a single flow step.
+        """Execute a single flow step with proper context management.
+
+        Creates a step-specific context namespace (step_<uuid>) to store
+        temporary data like 'result', 'item', and 'config'. This prevents
+        collisions in concurrent step execution. The namespace is cleaned
+        up after the step completes.
 
         Args:
             step: Step to execute
             context: Current execution context
             on_action_execute: Optional callback when action executes
+            on_user_input: Optional callback for user input/choice steps
 
         Returns:
-            Tuple of (updated context, step result dict)
+            Tuple of (updated context, step result dict with optional next_step_override)
 
         Raises:
             FlowExecutionError: If step execution fails
         """
-        step_result: dict[str, Any] = {"step_id": step.id, "step_type": step.type}
+        # Create unique step namespace to prevent concurrent step collisions
+        step_namespace = f"step_{uuid.uuid4().hex}"
+        logger.debug(
+            f"Executing step: {step.id} ({step.type}) in namespace {step_namespace}"
+        )
 
-        # Execute pre-actions if any
-        if step.pre_actions:
-            logger.debug(f"Executing {len(step.pre_actions)} pre-actions")
-            for action in step.pre_actions:
-                context = self._execute_action(action, context, on_action_execute)
+        try:
+            # Initialize step namespace with config
+            context = context.set_variable(f"{step_namespace}.config", step.step_config)
 
-        # Execute step based on type
-        if step.type == "completion":
-            logger.debug("Completion step reached")
-            step_result["completed"] = True
+            # Execute pre-actions if any
+            if step.pre_actions:
+                logger.debug(f"Executing {len(step.pre_actions)} pre-actions")
+                for action in step.pre_actions:
+                    context = self._execute_action(action, context, on_action_execute)
 
-        elif step.type == "player_input":
-            # For now, we'll store a placeholder
-            # In a real UI integration, this would trigger a UI prompt
-            logger.debug("Player input step (placeholder)")
-            step_result["result"] = None
+            # Execute step based on type
+            context = self._execute_step_logic(
+                step, context, step_namespace, on_user_input, on_action_execute
+            )
 
+            # Create convenient top-level aliases for step data
+            # This allows templates to use {{ result }} instead of {{ step_<uuid>.result }}
+            if context.has_variable(f"{step_namespace}.result"):
+                context = context.set_variable(
+                    "result", context.get_variable(f"{step_namespace}.result")
+                )
+            if context.has_variable(f"{step_namespace}.item"):
+                context = context.set_variable(
+                    "item", context.get_variable(f"{step_namespace}.item")
+                )
+
+            # Execute actions if any
+            if step.actions:
+                logger.debug(f"Executing {len(step.actions)} actions")
+                for action in step.actions:
+                    context = self._execute_action(action, context, on_action_execute)
+
+            # Build step result for callback (before cleanup)
+            step_result = self._build_step_result(step, context, step_namespace)
+
+            # Check for next_step_override from player_choice
+            if context.has_variable(f"{step_namespace}.next_step_override"):
+                step_result["next_step_override"] = context.get_variable(
+                    f"{step_namespace}.next_step_override"
+                )
+
+            return context, step_result
+
+        finally:
+            # Clean up step namespace AND top-level aliases
+            context_dict = context.to_dict()
+
+            # Remove step namespace
+            if step_namespace in context_dict:
+                del context_dict[step_namespace]
+
+            # Remove top-level aliases
+            if "result" in context_dict:
+                del context_dict["result"]
+            if "item" in context_dict:
+                del context_dict["item"]
+
+            context = GrimoireContext(context_dict)
+            context = context.set_template_resolver(self.template_resolver)
+
+    def _execute_step_logic(
+        self,
+        step: FlowStep,
+        context: GrimoireContext,
+        step_namespace: str,
+        on_user_input: Callable[[FlowStep, dict[str, Any]], Any] | None,
+        on_action_execute: Callable[[str, dict[str, Any]], None] | None,
+    ) -> GrimoireContext:
+        """Execute the step-specific logic based on step type.
+
+        Args:
+            step: Step to execute
+            context: Current execution context
+            step_namespace: Unique namespace for this step's data
+            on_user_input: Optional callback for user input/choice steps
+            on_action_execute: Optional callback when actions execute
+
+        Returns:
+            Updated context
+
+        Raises:
+            FlowExecutionError: If step execution fails
+        """
+        # Dispatch to appropriate step executor
+        executor = self._step_executors.get(step.type)
+        if executor:
+            return executor.execute(
+                step, context, step_namespace, on_user_input, on_action_execute
+            )
         else:
-            # For other step types, we'll implement handlers later
             logger.warning(f"Step type '{step.type}' not yet implemented")
-            step_result["result"] = None
+            return context
 
-        # Execute actions if any
-        if step.actions:
-            logger.debug(f"Executing {len(step.actions)} actions")
-            for action in step.actions:
-                context = self._execute_action(action, context, on_action_execute)
+    def _build_step_result(
+        self, step: FlowStep, context: GrimoireContext, step_namespace: str
+    ) -> dict[str, Any]:
+        """Build step result dict for callback.
 
-        return context, step_result
+        Args:
+            step: Step that was executed
+            context: Current execution context
+            step_namespace: Namespace where step data is stored
+
+        Returns:
+            Dictionary with step result information
+        """
+        result: dict[str, Any] = {"step_id": step.id, "step_type": step.type}
+
+        # Try to get result from step namespace
+        if context.has_variable(f"{step_namespace}.result"):
+            result["result"] = context.get_variable(f"{step_namespace}.result")
+
+        return result
 
     def _execute_action(
         self,
@@ -304,27 +478,22 @@ class FlowExecutionService:
         logger.debug(f"Executing action: {action_type}")
 
         try:
-            if action_type == "set_value":
-                context = self._action_set_value(action_data, context)
+            # Dispatch to appropriate action handler
+            handler = self._action_handlers.get(action_type)
+            if handler:
+                result = handler.execute(action_data, context, on_action_execute)
+                # Handlers return context if modified, None otherwise
+                if result is not None:
+                    context = result
 
-            elif action_type == "log_message":
-                self._action_log_message(action_data, context)
-
-            elif action_type == "log_event":
-                self._action_log_event(action_data, context)
-
-            elif action_type == "display_value":
-                self._action_display_value(action_data, context)
-
-            elif action_type == "validate_value":
-                self._action_validate_value(action_data, context)
-
+                # Notify callback if provided (unless already called by handler)
+                if on_action_execute and action_type not in (
+                    "display_message",
+                    "display_value",
+                ):
+                    on_action_execute(action_type, action_data)
             else:
                 logger.warning(f"Unknown action type: {action_type}")
-
-            # Notify callback if provided
-            if on_action_execute:
-                on_action_execute(action_type, action_data)
 
             return context
 
@@ -511,133 +680,6 @@ class FlowExecutionService:
 
         # For other types, return as-is
         return value
-
-    def _action_set_value(
-        self, action_data: dict[str, Any], context: GrimoireContext
-    ) -> GrimoireContext:
-        """Execute set_value action.
-
-        Args:
-            action_data: Action data containing 'path' and 'value'
-            context: Current execution context
-
-        Returns:
-            Updated context with value set
-
-        Raises:
-            ValueError: If path or value is invalid
-        """
-        path = action_data.get("path")
-        value = action_data.get("value")
-
-        if not path:
-            raise ValueError("set_value action requires 'path' field")
-
-        # Resolve template if value is a string
-        if isinstance(value, str):
-            value = context.resolve_template(value)
-
-        # Coerce to expected type based on path
-        expected_type = self._get_expected_type_for_path(path)
-        value = self._coerce_value_to_type(value, expected_type, path)
-
-        logger.debug(f"Setting value at path: {path}")
-        return context.set_variable(path, value)
-
-    def _action_log_message(
-        self, action_data: dict[str, Any] | str, context: GrimoireContext
-    ) -> None:
-        """Execute log_message action.
-
-        Args:
-            action_data: Action data (dict with 'message' or string)
-            context: Current execution context for template resolution
-        """
-        # Handle both dict and string formats
-        if isinstance(action_data, str):
-            message = action_data
-        else:
-            message = action_data.get("message", "")
-
-        # Resolve template if message is a string
-        if isinstance(message, str):
-            message = context.resolve_template(message)
-
-        logger.info(f"Flow log: {message}")
-
-    def _action_log_event(
-        self, action_data: dict[str, Any], context: GrimoireContext
-    ) -> None:
-        """Execute log_event action.
-
-        Args:
-            action_data: Action data containing 'type' and 'data'
-            context: Current execution context
-        """
-        event_type = action_data.get("type", "unknown")
-        event_data = action_data.get("data", {})
-
-        # Resolve templates in event_type and event_data
-        if isinstance(event_type, str):
-            event_type = context.resolve_template(event_type)
-
-        # Recursively resolve templates in event_data
-        if isinstance(event_data, dict):
-            event_data = self._resolve_templates_in_dict(event_data, context)
-        elif isinstance(event_data, str):
-            event_data = context.resolve_template(event_data)
-
-        logger.info(f"Flow event: {event_type}", extra={"event_data": event_data})
-
-    def _action_display_value(self, action_data: str, context: GrimoireContext) -> None:
-        """Execute display_value action.
-
-        Args:
-            action_data: Path to value to display
-            context: Current execution context
-        """
-        if not context.has_variable(action_data):
-            logger.warning(f"Cannot display: path not found: {action_data}")
-            return
-
-        value = context.get_variable(action_data)
-        logger.info(f"Display value at {action_data}: {value}")
-
-    def _action_validate_value(
-        self, action_data: str, context: GrimoireContext
-    ) -> None:
-        """Execute validate_value action.
-
-        Creates a GrimoireModel instance from the data and validates it using
-        the model's built-in validate() method, which properly applies defaults
-        before validation.
-
-        Args:
-            action_data: Path to value to validate
-            context: Current execution context
-
-        Raises:
-            FlowExecutionError: If validation fails
-        """
-        if not context.has_variable(action_data):
-            raise FlowExecutionError(f"Cannot validate: path not found: {action_data}")
-
-        value = context.get_variable(action_data)
-
-        # If it's a dict with a 'model' field, create and validate it
-        if isinstance(value, dict) and "model" in value:
-            try:
-                # Use create_object which creates a GrimoireModel instance
-                # The GrimoireModel's __init__ calls validate() internally,
-                # which applies defaults before validation
-                self.object_service.create_object(value)
-                logger.debug(f"Validation passed for {action_data}")
-            except Exception as e:
-                raise FlowExecutionError(
-                    f"Validation failed for {action_data}: {e}"
-                ) from e
-        else:
-            logger.debug(f"No validation needed for {action_data}")
 
     def _extract_outputs(
         self, flow_def: FlowDefinition, context: GrimoireContext

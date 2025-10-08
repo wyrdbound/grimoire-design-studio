@@ -186,6 +186,11 @@ class FlowTestDialog(QDialog):
         logger.info(f"Showing flow input dialog for: {flow_definition.name}")
         logger.debug(f"Flow has {len(flow_definition.inputs)} inputs")
 
+        # If flow has no inputs, return empty dict immediately without showing dialog
+        if not flow_definition.inputs:
+            logger.info("Flow has no inputs, skipping dialog")
+            return {}
+
         dialog = FlowTestDialog(flow_definition, parent)
         result = dialog.exec()
 
