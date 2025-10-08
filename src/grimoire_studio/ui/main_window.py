@@ -6,13 +6,14 @@ interface with a three-panel layout for project browsing, editing, and propertie
 """
 
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 from grimoire_logging import get_logger
 from PyQt6.QtCore import QPoint, QSize, Qt, pyqtSignal
 from PyQt6.QtGui import QAction, QFont, QKeySequence
 from PyQt6.QtWidgets import (
     QApplication,
+    QInputDialog,
     QLabel,
     QMainWindow,
     QMenu,
@@ -1339,9 +1340,6 @@ class MainWindow(QMainWindow):
                     raise RuntimeError("No project loaded")
 
                 # Load system using ProjectManager
-                from PyQt6.QtCore import Qt
-                from PyQt6.QtWidgets import QProgressDialog
-
                 from ..core.project_manager import ProjectManager
                 from ..services.object_service import ObjectInstantiationService
 
@@ -1354,130 +1352,371 @@ class MainWindow(QMainWindow):
                 # Create flow execution service
                 flow_service = FlowExecutionService(system, object_service)
 
-                # Create progress dialog - initialize early so it's always defined
-                progress = QProgressDialog(
-                    f"Executing flow: {flow_def.name}...",
-                    "Cancel",
-                    0,
-                    len(flow_def.steps) + 1,
-                    self,
-                )
-                progress.setWindowTitle("Flow Execution")
-                progress.setWindowModality(Qt.WindowModality.WindowModal)
-                progress.setValue(0)
+                def _show_single_choice_dialog(
+                    step: Any, prompt: str, choices: list[dict]
+                ) -> str:
+                    """Show single choice dialog and return selected choice ID."""
+                    # Build list of choice labels
+                    choice_labels = [
+                        choice.get("label", choice.get("id", f"Choice {i}"))
+                        for i, choice in enumerate(choices)
+                    ]
 
-                try:
-                    # Track execution state
-                    current_step = [0]  # Use list to allow mutation in callback
-                    execution_cancelled = [False]
-
-                    def on_step_complete(step_id: str, context: dict) -> None:
-                        """Callback when a flow step completes."""
-                        current_step[0] += 1
-                        progress.setValue(current_step[0])
-                        progress.setLabelText(
-                            f"Executing flow: {flow_def.name}...\nCompleted step: {step_id}"
-                        )
-                        self._output_console.display_execution_output(
-                            f"Step '{step_id}' completed", "info", auto_switch=False
-                        )
-
-                        # Check if user cancelled
-                        if progress.wasCanceled():
-                            execution_cancelled[0] = True
-                            raise RuntimeError("Flow execution cancelled by user")
-
-                    def on_action_execute(action_type: str, params: dict) -> None:
-                        """Callback when a flow action executes."""
-                        self._logger.debug(
-                            f"Action executed: {action_type} with {params}"
-                        )
-
-                    # Execute the flow with callbacks
-                    result = flow_service.execute_flow(
-                        flow_def.id,
-                        input_values,
-                        on_step_complete=on_step_complete,
-                        on_action_execute=on_action_execute,
-                    )
-
-                    # Mark as complete
-                    progress.setValue(len(flow_def.steps) + 1)
-                    progress.close()
-
-                    # Calculate execution duration
-                    execution_end_time = datetime.now()
-                    duration = (
-                        execution_end_time - execution_start_time
-                    ).total_seconds()
-
-                    # Display results with timing info
-                    self._output_console.display_execution_output(
-                        "=== Flow Execution Completed ===",
-                        "success",
-                        auto_switch=False,
-                    )
-                    self._output_console.display_execution_output(
-                        f"Duration: {duration:.2f} seconds", "info", auto_switch=False
-                    )
-                    self._output_console.display_execution_output(
-                        f"Result: {result}", "info", auto_switch=False
-                    )
-                    self.set_status(f"Flow '{flow_def.name}' executed successfully")
-
-                    # Log successful execution
-                    self._logger.info(
-                        f"Flow '{flow_def.name}' executed successfully in {duration:.2f}s"
-                    )
-
-                except Exception as exec_error:
-                    # Close progress dialog
-                    progress.close()
-
-                    # Calculate execution duration for failed execution
-                    execution_end_time = datetime.now()
-                    duration = (
-                        execution_end_time - execution_start_time
-                    ).total_seconds()
-
-                    self._logger.error(
-                        f"Flow execution failed after {duration:.2f}s: {exec_error}"
-                    )
-                    self._output_console.display_execution_output(
-                        "=== Flow Execution Failed ===", "error", auto_switch=False
-                    )
-                    self._output_console.display_execution_output(
-                        f"Duration before failure: {duration:.2f} seconds",
-                        "info",
-                        auto_switch=False,
-                    )
-                    self._output_console.display_execution_output(
-                        f"Error: {exec_error}", "error", auto_switch=False
-                    )
-                    self.set_status(f"Flow execution failed: {exec_error}")
-                    QMessageBox.critical(
+                    # Show choice dialog
+                    choice_label, ok = QInputDialog.getItem(
                         self,
-                        "Flow Execution Error",
-                        f"Flow execution failed:\n{exec_error}",
+                        f"Player Choice: {step.name or step.id}",
+                        prompt,
+                        choice_labels,
+                        current=0,
+                        editable=False,
                     )
 
-            except Exception as load_error:
-                # Handle errors that occur before flow execution (e.g., loading system)
-                self._logger.error(f"Failed to set up flow execution: {load_error}")
+                    if not ok:
+                        raise RuntimeError("User cancelled player_choice dialog")
+
+                    # Find the selected choice and return its ID
+                    for choice in choices:
+                        if (
+                            choice.get("label") == choice_label
+                            or choice.get("id") == choice_label
+                        ):
+                            choice_id = str(choice.get("id", choice_label))
+                            self._logger.info(f"Player choice selected: {choice_id}")
+                            return choice_id
+
+                    # Fallback: return the label itself
+                    self._logger.warning(
+                        f"Could not find choice ID for label '{choice_label}', returning label"
+                    )
+                    return str(choice_label)
+
+                def _show_multi_choice_dialog(
+                    step: Any, prompt: str, choices: list[dict], selection_count: int
+                ) -> list[str]:
+                    """Show multi-choice dialog and return list of selected choice IDs."""
+                    from PyQt6.QtWidgets import (
+                        QAbstractItemView,
+                        QDialog,
+                        QDialogButtonBox,
+                        QLabel,
+                        QListWidget,
+                        QVBoxLayout,
+                    )
+
+                    dialog = QDialog(self)
+                    dialog.setWindowTitle(f"Player Choice: {step.name or step.id}")
+                    dialog.setModal(True)
+                    dialog.resize(400, 300)
+
+                    layout = QVBoxLayout(dialog)
+
+                    # Add prompt label
+                    prompt_label = QLabel(
+                        f"{prompt}\n\nSelect {selection_count} items:"
+                    )
+                    layout.addWidget(prompt_label)
+
+                    # Add list widget with multi-selection
+                    list_widget = QListWidget()
+                    list_widget.setSelectionMode(
+                        QAbstractItemView.SelectionMode.MultiSelection
+                    )
+
+                    for choice in choices:
+                        label = choice.get("label", choice.get("id", "Unknown"))
+                        list_widget.addItem(label)
+
+                    # Add selection limit enforcement
+                    def on_selection_changed() -> None:
+                        """Enforce selection count limit by deselecting excess items."""
+                        selected_items = list_widget.selectedItems()
+                        if len(selected_items) > selection_count:
+                            # Find the most recently selected item and keep it selected
+                            # Deselect all others beyond the limit
+                            current_row = list_widget.currentRow()
+
+                            # Get all selected rows
+                            selected_rows = []
+                            for i in range(list_widget.count()):
+                                item = list_widget.item(i)
+                                if item is not None and item.isSelected():
+                                    selected_rows.append(i)
+
+                            # Deselect excess items, keeping the most recent selection
+                            if current_row in selected_rows:
+                                # Keep current selection and (selection_count - 1) others
+                                selected_rows.remove(current_row)
+                                excess_count = len(selected_rows) - (
+                                    selection_count - 1
+                                )
+
+                                # Deselect the oldest selections
+                                for _ in range(excess_count):
+                                    if selected_rows:
+                                        row_to_deselect = selected_rows.pop(0)
+                                        item = list_widget.item(row_to_deselect)
+                                        if item is not None:
+                                            item.setSelected(False)
+                            else:
+                                # Current row not selected, just limit to selection_count
+                                excess_count = len(selected_rows) - selection_count
+                                for _ in range(excess_count):
+                                    if selected_rows:
+                                        row_to_deselect = selected_rows.pop(0)
+                                        item = list_widget.item(row_to_deselect)
+                                        if item is not None:
+                                            item.setSelected(False)
+
+                    # Connect the selection change handler
+                    list_widget.itemSelectionChanged.connect(on_selection_changed)
+
+                    layout.addWidget(list_widget)
+
+                    # Add buttons - OK button enabled only when exactly selection_count items selected
+                    button_box = QDialogButtonBox(
+                        QDialogButtonBox.StandardButton.Ok
+                        | QDialogButtonBox.StandardButton.Cancel
+                    )
+                    ok_button = button_box.button(QDialogButtonBox.StandardButton.Ok)
+
+                    def update_ok_button() -> None:
+                        """Enable OK button only when exactly selection_count items are selected."""
+                        selected_count = len(list_widget.selectedItems())
+                        if ok_button is not None:
+                            ok_button.setEnabled(selected_count == selection_count)
+
+                        # Update prompt to show current selection status
+                        if selected_count == 0:
+                            status_text = f"Select {selection_count} items:"
+                        elif selected_count < selection_count:
+                            remaining = selection_count - selected_count
+                            status_text = f"Select {remaining} more item{'s' if remaining != 1 else ''}:"
+                        else:
+                            status_text = f"Ready! {selection_count} items selected."
+
+                        prompt_label.setText(f"{prompt}\n\n{status_text}")
+
+                    # Connect button update handler and initialize
+                    list_widget.itemSelectionChanged.connect(update_ok_button)
+                    update_ok_button()  # Initialize button state
+
+                    button_box.accepted.connect(dialog.accept)
+                    button_box.rejected.connect(dialog.reject)
+                    layout.addWidget(button_box)
+
+                    if dialog.exec() != QDialog.DialogCode.Accepted:
+                        raise RuntimeError("User cancelled player_choice dialog")
+
+                    # Get selected items (validation no longer needed since UI enforces limit)
+                    selected_items = list_widget.selectedItems()
+
+                    # Convert selected labels back to choice IDs
+                    selected_ids = []
+                    for item in selected_items:
+                        label = item.text()
+                        for choice in choices:
+                            if (
+                                choice.get("label", choice.get("id", "Unknown"))
+                                == label
+                            ):
+                                selected_ids.append(choice.get("id", label))
+                                break
+
+                    self._logger.info(f"Player multi-choice selected: {selected_ids}")
+                    return selected_ids
+
+                # Initialize progress tracking in output console
+                self._output_console.start_flow_progress(
+                    flow_def.name, len(flow_def.steps) + 1
+                )
+
+                # Track execution state
+                current_step = [0]  # Use list to allow mutation in callback
+
+                def on_step_complete(step_id: str, context: dict) -> None:
+                    """Callback when a flow step completes."""
+                    current_step[0] += 1
+                    self._output_console.update_flow_progress(current_step[0], step_id)
+                    self._output_console.display_execution_output(
+                        f"Step '{step_id}' completed", "info", auto_switch=False
+                    )
+
+                def on_action_execute(action_type: str, params: dict) -> None:
+                    """Callback when a flow action executes."""
+                    self._logger.debug(f"Action executed: {action_type} with {params}")
+
+                    # Handle display_message and display_value actions - show in execution console
+                    if action_type in ("display_message", "display_value"):
+                        # Extract message from params dict
+                        message = params.get("message", str(params))
+
+                        # Display in execution output
+                        self._output_console.display_execution_output(
+                            message, "info", auto_switch=False
+                        )
+
+                def on_user_input(step: Any, context: dict) -> Any:
+                    """Callback for user input/choice steps."""
+                    from ..models.grimoire_definitions import FlowStep
+
+                    if not isinstance(step, FlowStep):
+                        self._logger.error(
+                            f"on_user_input received non-FlowStep: {type(step)}"
+                        )
+                        return None
+
+                    if step.type == "player_input":
+                        # Show input dialog for player_input steps
+                        # Require prompt to be specified - no fallbacks
+                        if not step.prompt:
+                            raise RuntimeError(
+                                f"player_input step '{step.id}' missing required 'prompt' field"
+                            )
+
+                        prompt = step.prompt
+                        input_type = step.step_config.get("type", "str")
+
+                        user_value: Union[int, str]
+                        if input_type in ("int", "integer"):
+                            user_value, ok = QInputDialog.getInt(
+                                self,
+                                f"Player Input: {step.name or step.id}",
+                                prompt,
+                                value=0,
+                                min=-999999,
+                                max=999999,
+                            )
+                        else:
+                            user_value, ok = QInputDialog.getText(
+                                self,
+                                f"Player Input: {step.name or step.id}",
+                                prompt,
+                            )
+
+                        if not ok:
+                            raise RuntimeError("User cancelled player_input dialog")
+
+                        self._logger.info(f"Player input received: {user_value}")
+                        return user_value
+
+                    elif step.type == "player_choice":
+                        # Show choice dialog for player_choice steps
+                        # Require prompt to be specified - no fallbacks
+                        if not step.prompt:
+                            raise RuntimeError(
+                                f"player_choice step '{step.id}' missing required 'prompt' field"
+                            )
+
+                        prompt = step.prompt
+                        choices = step.step_config.get("choices", [])
+
+                        if not choices:
+                            raise RuntimeError(
+                                f"player_choice step '{step.id}' has no choices"
+                            )
+
+                        # Check for multi-selection
+                        choice_source = step.step_config.get("choice_source", {})
+                        selection_count = choice_source.get("selection_count", 1)
+
+                        if selection_count > 1:
+                            # Multi-selection dialog
+                            return _show_multi_choice_dialog(
+                                step, prompt, choices, selection_count
+                            )
+                        else:
+                            # Single selection dialog
+                            return _show_single_choice_dialog(step, prompt, choices)
+
+                    else:
+                        self._logger.warning(
+                            f"on_user_input called for unsupported step type: {step.type}"
+                        )
+                        return None
+
+                # Execute the flow with callbacks
+                result = flow_service.execute_flow(
+                    flow_def.id,
+                    input_values,
+                    on_step_complete=on_step_complete,
+                    on_action_execute=on_action_execute,
+                    on_user_input=on_user_input,
+                )
+
+                # Mark progress as complete
+                self._output_console.update_flow_progress(
+                    len(flow_def.steps) + 1, "Complete"
+                )
+                self._output_console.finish_flow_progress(success=True)
+
+                # Calculate execution duration
+                execution_end_time = datetime.now()
+                duration = (execution_end_time - execution_start_time).total_seconds()
+
+                # Display results with timing info
                 self._output_console.display_execution_output(
-                    "=== Flow Setup Failed ===", "error", auto_switch=False
+                    "=== Flow Execution Completed ===",
+                    "success",
+                    auto_switch=False,
                 )
                 self._output_console.display_execution_output(
-                    f"Error: {load_error}", "error", auto_switch=False
+                    f"Duration: {duration:.2f} seconds", "info", auto_switch=False
                 )
-                self.set_status(f"Flow setup failed: {load_error}")
+                self._output_console.display_execution_output(
+                    f"Result: {result}", "info", auto_switch=False
+                )
+                self.set_status(f"Flow '{flow_def.name}' executed successfully")
+
+                # Log successful execution
+                self._logger.info(
+                    f"Flow '{flow_def.name}' executed successfully in {duration:.2f}s"
+                )
+
+            except Exception as exec_error:
+                # Mark progress as failed
+                self._output_console.finish_flow_progress(success=False)
+
+                # Calculate execution duration for failed execution
+                execution_end_time = datetime.now()
+                duration = (execution_end_time - execution_start_time).total_seconds()
+
+                self._logger.error(
+                    f"Flow execution failed after {duration:.2f}s: {exec_error}"
+                )
+                self._output_console.display_execution_output(
+                    "=== Flow Execution Failed ===", "error", auto_switch=False
+                )
+                self._output_console.display_execution_output(
+                    f"Duration before failure: {duration:.2f} seconds",
+                    "info",
+                    auto_switch=False,
+                )
+                self._output_console.display_execution_output(
+                    f"Error: {exec_error}", "error", auto_switch=False
+                )
+                self.set_status(f"Flow execution failed: {exec_error}")
                 QMessageBox.critical(
                     self,
-                    "Flow Setup Error",
-                    f"Failed to set up flow execution:\n{load_error}",
+                    "Flow Execution Error",
+                    f"Flow execution failed:\n{exec_error}",
                 )
 
         except Exception as e:
+            # Handle errors that occur before flow execution (e.g., loading system/flow)
+            self._logger.error(f"Failed to set up or load flow: {e}")
+            self._output_console.display_execution_output(
+                "=== Flow Setup/Load Failed ===", "error", auto_switch=False
+            )
+            self._output_console.display_execution_output(
+                f"Error: {e}", "error", auto_switch=False
+            )
+            self.set_status(f"Flow setup failed: {e}")
+            QMessageBox.critical(
+                self,
+                "Flow Error",
+                f"Failed to load or set up flow:\n{e}",
+            )
             import traceback
 
             error_msg = f"Failed to test flow: {e}"

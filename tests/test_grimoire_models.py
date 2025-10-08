@@ -370,6 +370,149 @@ class TestTableDefinition:
         assert table.roll is None
         assert len(table.entries) == 2
 
+    def test_table_entries_dict_format_conversion(self):
+        """Test conversion from dict format entries to list format."""
+        data = {
+            "id": "gender",
+            "kind": "table",
+            "name": "Gender",
+            "version": 1,
+            "roll": "1d20",
+            "entries": {"1-10": "Female", "11-19": "Male", "20": "Non-binary"},
+        }
+
+        table = TableDefinition.from_dict(data)
+
+        assert table.id == "gender"
+        assert len(table.entries) == 3
+
+        # Check that entries were converted to expected format
+        assert table.entries[0] == {"range": "1-10", "value": "Female"}
+        assert table.entries[1] == {"range": "11-19", "value": "Male"}
+        assert table.entries[2] == {"range": "20", "value": "Non-binary"}
+
+    def test_table_entries_list_format_preserved(self):
+        """Test that list format entries are preserved as-is."""
+        data = {
+            "id": "test_table",
+            "kind": "table",
+            "name": "Test Table",
+            "version": 1,
+            "roll": "1d6",
+            "entries": [
+                {"range": "1-2", "value": "common"},
+                {"range": "3-4", "value": "uncommon"},
+                {"range": "5-6", "value": "rare"},
+            ],
+        }
+
+        table = TableDefinition.from_dict(data)
+
+        assert table.id == "test_table"
+        assert len(table.entries) == 3
+
+        # Check that entries remain in original format
+        assert table.entries[0] == {"range": "1-2", "value": "common"}
+        assert table.entries[1] == {"range": "3-4", "value": "uncommon"}
+        assert table.entries[2] == {"range": "5-6", "value": "rare"}
+
+    def test_table_entries_mixed_types_in_dict(self):
+        """Test dict format with mixed value types (strings, numbers, etc.)."""
+        data = {
+            "id": "mixed_table",
+            "kind": "table",
+            "name": "Mixed Table",
+            "version": 1,
+            "roll": "1d10",
+            "entries": {
+                "1": "string_value",
+                "2-3": 42,
+                "4-6": {"complex": "object"},
+                "7": True,
+                "8-10": None,
+            },
+        }
+
+        table = TableDefinition.from_dict(data)
+
+        assert len(table.entries) == 5
+
+        # Verify all value types are preserved
+        entries_by_range = {entry["range"]: entry["value"] for entry in table.entries}
+        assert entries_by_range["1"] == "string_value"
+        assert entries_by_range["2-3"] == 42
+        assert entries_by_range["4-6"] == {"complex": "object"}
+        assert entries_by_range["7"] is True
+        assert entries_by_range["8-10"] is None
+
+    def test_table_entries_empty_dict(self):
+        """Test table with empty entries dict."""
+        data = {
+            "id": "empty_table",
+            "kind": "table",
+            "name": "Empty Table",
+            "entries": {},
+        }
+
+        table = TableDefinition.from_dict(data)
+
+        assert len(table.entries) == 0
+
+    def test_table_entries_empty_list(self):
+        """Test table with empty entries list."""
+        data = {
+            "id": "empty_list_table",
+            "kind": "table",
+            "name": "Empty List Table",
+            "entries": [],
+        }
+
+        table = TableDefinition.from_dict(data)
+
+        assert len(table.entries) == 0
+
+    def test_table_entries_missing(self):
+        """Test table with no entries field."""
+        data = {"id": "no_entries_table", "kind": "table", "name": "No Entries Table"}
+
+        table = TableDefinition.from_dict(data)
+
+        assert len(table.entries) == 0
+
+    def test_gender_table_real_world_example(self):
+        """Test the actual gender table format from the system files."""
+        # This matches the exact format in systems/knave_1e/tables/misc/gender.yaml
+        data = {
+            "kind": "table",
+            "id": "gender",
+            "name": "Gender",
+            "version": 1,
+            "roll": "1d20",
+            "description": "Gender options for characters",
+            "entries": {"1-10": "Female", "11-19": "Male", "20": "Non-binary"},
+        }
+
+        table = TableDefinition.from_dict(data)
+
+        # Verify the conversion worked correctly
+        assert table.id == "gender"
+        assert table.name == "Gender"
+        assert table.roll == "1d20"
+        assert len(table.entries) == 3
+
+        # Check all entries were converted to expected format
+        expected_entries = [
+            {"range": "1-10", "value": "Female"},
+            {"range": "11-19", "value": "Male"},
+            {"range": "20", "value": "Non-binary"},
+        ]
+
+        # Sort both lists to ensure order-independent comparison
+        actual_sorted = sorted(table.entries, key=lambda x: x["range"])
+        expected_sorted = sorted(expected_entries, key=lambda x: x["range"])
+
+        assert actual_sorted == expected_sorted
+
 
 class TestSourceDefinition:
     """Test SourceDefinition parsing."""
