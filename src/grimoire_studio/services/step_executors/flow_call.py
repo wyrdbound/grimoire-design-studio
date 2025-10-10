@@ -79,10 +79,10 @@ class FlowCallStepExecutor:
         """
         try:
             # Get the target flow from step_config
-            flow_id = step.step_config.get("flow_id")
+            flow_id = step.step_config.get("flow")
             if not flow_id:
                 raise FlowExecutionError(
-                    f"Step {step.id}: 'flow_id' field is required in step_config"
+                    f"Step {step.id}: 'flow' field is required in step_config"
                 )
 
             if flow_id not in self.system.flows:
