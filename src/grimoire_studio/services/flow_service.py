@@ -5,10 +5,14 @@ of GRIMOIRE flows, including context management, step execution, and action hand
 
 This service requires grimoire-context to be installed and will fail explicitly
 if it is not available, following the principle of explicit errors over fallbacks.
+
+Flow execution is orchestrated by Prefect for enhanced monitoring, parallel execution,
+and error handling capabilities.
 """
 
 from __future__ import annotations
 
+import os
 import uuid
 from typing import Any, Callable
 
@@ -17,6 +21,7 @@ from grimoire_context import (
 )  # Explicit import - fail fast if not available
 from grimoire_logging import get_logger
 from grimoire_model import Jinja2TemplateResolver
+from prefect import flow, task
 
 from ..models.grimoire_definitions import CompleteSystem, FlowDefinition, FlowStep
 from .action_handlers.display_message import DisplayMessageActionHandler
@@ -32,8 +37,10 @@ from .llm_service import LLMConfig, LLMService
 from .name_service import NameService
 from .object_service import ObjectInstantiationService
 from .step_executors.completion import CompletionStepExecutor
+from .step_executors.conditional_branch import ConditionalBranchStepExecutor
 from .step_executors.dice_roll import DiceRollStepExecutor
 from .step_executors.dice_sequence import DiceSequenceStepExecutor
+from .step_executors.flow_call import FlowCallStepExecutor
 from .step_executors.llm_generation import LLMGenerationStepExecutor
 from .step_executors.name_generation import NameGenerationStepExecutor
 from .step_executors.player_choice import PlayerChoiceStepExecutor
@@ -41,6 +48,12 @@ from .step_executors.player_input import PlayerInputStepExecutor
 from .step_executors.table_roll import TableRollStepExecutor
 
 logger = get_logger(__name__)
+
+# Configure Prefect for optimal GRIMOIRE performance
+# Use ephemeral mode - no server needed, minimal overhead
+os.environ.setdefault("PREFECT_API_URL", "")  # Ephemeral mode
+os.environ.setdefault("PREFECT_LOGGING_LEVEL", "WARNING")  # Reduce noise
+os.environ.setdefault("PREFECT_API_ENABLE_HTTP2", "false")  # Better compatibility
 
 
 class _TemplateResolverAdapter:
@@ -119,6 +132,13 @@ class FlowExecutionService:
                 self.system, self.llm_service, self._resolve_templates_in_dict
             ),
             "name_generation": NameGenerationStepExecutor(),
+            "flow_call": FlowCallStepExecutor(
+                self.system, self, self.template_resolver
+            ),
+            "conditional_branch": ConditionalBranchStepExecutor(
+                lambda template_str, context: context.resolve_template(template_str),
+                self._execute_action,
+            ),
         }
 
         # Initialize action handlers
@@ -136,6 +156,14 @@ class FlowExecutionService:
 
         logger.info(f"Initialized FlowExecutionService for system: {system.system.id}")
 
+    @flow(
+        name="execute_grimoire_flow",
+        flow_run_name="{flow_id}",
+        persist_result=False,  # No result persistence in ephemeral mode
+        validate_parameters=False,  # We do our own validation
+        log_prints=False,  # Use grimoire-logging instead
+        timeout_seconds=300,  # 5 minute timeout for long flows
+    )
     def execute_flow(
         self,
         flow_id: str,
@@ -263,19 +291,21 @@ class FlowExecutionService:
             step = flow_def.steps[current_step_index]
             logger.debug(f"Executing step: {step.id} ({step.type})")
 
-            # Execute the step
+            # Execute the step (Prefect task executes synchronously within flow)
             context, step_result = self._execute_step(
                 step, context, on_action_execute, on_user_input
             )
 
             # Notify callback if provided
             if on_step_complete:
-                on_step_complete(step.id, step_result)
+                # mypy: Prefect decorators confuse type inference
+                on_step_complete(step.id, step_result)  # type: ignore[arg-type]
 
             # Determine next step
             # Check for next_step_override from player_choice first
             if "next_step_override" in step_result:
-                next_step_id = step_result["next_step_override"]
+                # mypy: Prefect decorators confuse type inference
+                next_step_id = step_result["next_step_override"]  # type: ignore[call-overload]
                 next_index = next(
                     (i for i, s in enumerate(flow_def.steps) if s.id == next_step_id),
                     None,
@@ -303,6 +333,14 @@ class FlowExecutionService:
         logger.debug("All steps completed")
         return context
 
+    @task(
+        name="execute_step",
+        # task_run_name="{step.type}__{step.id}",
+        task_run_name="{step.name} ({step.type})",
+        persist_result=False,  # No persistence in ephemeral mode
+        retries=0,  # Default: no retries (configure per step type if needed)
+        log_prints=False,  # Use grimoire-logging
+    )
     def _execute_step(
         self,
         step: FlowStep,
@@ -363,11 +401,33 @@ class FlowExecutionService:
 
             # Execute actions if any
             if step.actions:
-                logger.debug(f"Executing {len(step.actions)} actions")
-                for action in step.actions:
-                    context = self._execute_action(action, context, on_action_execute)
-
-            # Build step result for callback (before cleanup)
+                # Check if parallel execution is requested
+                if step.parallel:
+                    # For parallel execution, resolve all templates upfront
+                    # (parallel actions can't depend on each other anyway)
+                    resolved_actions = []
+                    for action in step.actions:
+                        resolved_actions.append(
+                            self._resolve_templates_in_dict(action, context)
+                        )
+                    logger.debug(
+                        f"Executing {len(resolved_actions)} actions in parallel"
+                    )
+                    context = self._execute_actions_parallel(
+                        resolved_actions, context, on_action_execute
+                    )
+                else:
+                    # For sequential execution, resolve templates just before each action
+                    # This allows actions to reference results from previous actions
+                    logger.debug(f"Executing {len(step.actions)} actions")
+                    for action in step.actions:
+                        # Resolve templates with current context (updated by previous actions)
+                        resolved_action = self._resolve_templates_in_dict(
+                            action, context
+                        )
+                        context = self._execute_action(
+                            resolved_action, context, on_action_execute
+                        )  # Build step result for callback (before cleanup)
             step_result = self._build_step_result(step, context, step_namespace)
 
             # Check for next_step_override from player_choice
@@ -418,11 +478,18 @@ class FlowExecutionService:
         Raises:
             FlowExecutionError: If step execution fails
         """
+        # Create a copy of the step with templated step_config
+        templated_step = self._resolve_step_templates(step, context)
+
         # Dispatch to appropriate step executor
         executor = self._step_executors.get(step.type)
         if executor:
             return executor.execute(
-                step, context, step_namespace, on_user_input, on_action_execute
+                templated_step,
+                context,
+                step_namespace,
+                on_user_input,
+                on_action_execute,
             )
         else:
             logger.warning(f"Step type '{step.type}' not yet implemented")
@@ -502,6 +569,71 @@ class FlowExecutionService:
             logger.error(error_msg)
             raise FlowExecutionError(error_msg) from e
 
+    def _execute_actions_parallel(
+        self,
+        actions: list[dict[str, Any]],
+        context: GrimoireContext,
+        on_action_execute: Callable[[str, dict[str, Any]], None] | None,
+    ) -> GrimoireContext:
+        """Execute multiple actions in parallel using GrimoireContext.execute_parallel().
+
+        Uses grimoire-context v0.3.0's execute_parallel() with fixed merge semantics
+        where None values are treated as "no change" rather than explicit assignments.
+        This allows multiple parallel operations to modify nested paths within the same
+        parent dictionary without conflicts.
+
+        Args:
+            actions: List of action definitions to execute in parallel
+            context: Current execution context
+            on_action_execute: Optional callback when action executes
+
+        Returns:
+            Updated context after all actions complete
+
+        Raises:
+            FlowExecutionError: If any action execution fails
+        """
+
+        # Create callable operations for each action
+        def create_action_operation(
+            action: dict[str, Any],
+        ) -> Callable[[GrimoireContext], GrimoireContext]:
+            """Create a callable operation for an action."""
+
+            def operation(ctx: GrimoireContext) -> GrimoireContext:
+                if not action:
+                    return ctx
+
+                action_type = next(iter(action.keys()))
+                action_data = action[action_type]
+
+                handler = self._action_handlers.get(action_type)
+                if handler:
+                    result = handler.execute(action_data, ctx, None)
+                    return result if result is not None else ctx
+                else:
+                    logger.warning(f"Unknown action type: {action_type}")
+                    return ctx
+
+            return operation
+
+        # Create operations for all actions
+        operations = [create_action_operation(action) for action in actions]
+
+        # Execute all operations in parallel using grimoire-context
+        context = context.execute_parallel(operations)
+
+        # Notify callbacks for all actions (callbacks are not parallel-safe)
+        if on_action_execute:
+            for action in actions:
+                if action:
+                    action_type = next(iter(action.keys()))
+                    action_data = action[action_type]
+                    if action_type not in ("display_message", "display_value"):
+                        on_action_execute(action_type, action_data)
+
+        return context
+
     def _resolve_templates_in_dict(
         self, data: dict[str, Any], context: GrimoireContext
     ) -> dict[str, Any]:
@@ -536,6 +668,49 @@ class FlowExecutionService:
             else:
                 result[key] = value
         return result
+
+    def _resolve_step_templates(
+        self, step: FlowStep, context: GrimoireContext
+    ) -> FlowStep:
+        """Create a copy of the step with templates resolved in step_config only.
+
+        Actions are resolved separately after step execution when results are available.
+
+        Args:
+            step: Original step definition
+            context: Current execution context
+
+        Returns:
+            New FlowStep with step_config templates resolved
+        """
+        # Create a copy of the step to avoid modifying the original
+        from copy import deepcopy
+
+        step_copy = deepcopy(step)
+
+        # NOTE: step_config is NOT resolved here because it may contain actions
+        # that reference step results ({{ result }}), which are not available yet.
+        # Each step executor is responsible for resolving its own step_config templates
+        # after generating results if needed.
+
+        # Resolve templates in pre_actions
+        if step_copy.pre_actions:
+            resolved_pre_actions = []
+            for action in step_copy.pre_actions:
+                resolved_pre_actions.append(
+                    self._resolve_templates_in_dict(action, context)
+                )
+            step_copy.pre_actions = resolved_pre_actions
+
+        # Resolve template in prompt if present
+        if step_copy.prompt:
+            step_copy.prompt = context.resolve_template(step_copy.prompt)
+
+        # Resolve template in condition if present
+        if step_copy.condition:
+            step_copy.condition = context.resolve_template(step_copy.condition)
+
+        return step_copy
 
     def _get_expected_type_for_path(self, path: str) -> str | None:
         """Get the expected type for a flow path, including nested attributes.

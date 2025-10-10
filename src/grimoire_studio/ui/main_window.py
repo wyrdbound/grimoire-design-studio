@@ -1636,7 +1636,8 @@ class MainWindow(QMainWindow):
                         return None
 
                 # Execute the flow with callbacks
-                result = flow_service.execute_flow(
+                # Note: mypy doesn't understand Prefect @flow decorator
+                result = flow_service.execute_flow(  # type: ignore
                     flow_def.id,
                     input_values,
                     on_step_complete=on_step_complete,

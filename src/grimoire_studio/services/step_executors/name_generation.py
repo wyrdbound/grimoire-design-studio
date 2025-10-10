@@ -6,6 +6,7 @@ from typing import Any, Callable
 
 from grimoire_context import GrimoireContext
 from grimoire_logging import get_logger
+from prefect import task
 
 from ...models.grimoire_definitions import FlowStep
 from ..decorators import handle_execution_error
@@ -17,6 +18,13 @@ logger = get_logger(__name__)
 class NameGenerationStepExecutor:
     """Executor for name_generation steps."""
 
+    @task(
+        name="name_generation_step",
+        task_run_name="name_gen_{step.id}",
+        persist_result=False,
+        retries=1,  # Names can occasionally fail, retry once
+        log_prints=False,
+    )
     @handle_execution_error("Name generation")
     def execute(
         self,

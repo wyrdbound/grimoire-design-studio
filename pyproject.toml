@@ -32,12 +32,11 @@ dependencies = [
     "pygments>=2.14.0",  # Required for YAML syntax highlighting
     "grimoire-logging>=0.1.0",
     "grimoire-model>=0.2.1",  # Object instantiation and validation
-    "grimoire-context>=0.2.0",  # Flow execution context management
+    "grimoire-context>=0.3.0",  # Flow execution context management with fixed parallel merge semantics
     "wyrdbound-dice>=0.0.1",  # Dice rolling
     "wyrdbound-rng>=0.0.1",  # Name generation
-    # Note: Other GRIMOIRE libraries will be added when available
+    "prefect>=2.14.0",  # Workflow orchestration
     # "langchain>=0.1.0",
-    # "prefect>=2.0.0",
 ]
 
 [project.optional-dependencies]
