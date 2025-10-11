@@ -7,7 +7,7 @@ from typing import Any, Callable
 from grimoire_context import GrimoireContext
 from grimoire_logging import get_logger
 
-from ...models.grimoire_definitions import FlowStep
+from ...models.grimoire_definitions import CompleteSystem, FlowStep
 from ..decorators import handle_execution_error
 from ..exceptions import FlowExecutionError
 
@@ -19,6 +19,7 @@ class PlayerChoiceStepExecutor:
 
     def __init__(
         self,
+        system: CompleteSystem,
         template_resolver: Any,
         action_executor: Callable[
             [
@@ -32,9 +33,11 @@ class PlayerChoiceStepExecutor:
         """Initialize the player choice step executor.
 
         Args:
+            system: Complete GRIMOIRE system with table definitions
             template_resolver: Template resolver adapter
             action_executor: Function to execute actions
         """
+        self.system = system
         self.template_resolver = template_resolver
         self.action_executor = action_executor
 
@@ -153,12 +156,86 @@ class PlayerChoiceStepExecutor:
         Raises:
             FlowExecutionError: If choice generation fails
         """
+        table_id = choice_source.get("table")
         table_from_values = choice_source.get("table_from_values")
-        display_format = choice_source.get("display_format", "{{ key }}: {{ value }}")
+        display_format = choice_source.get("display_format", "{{ entry|title }}")
 
-        if not table_from_values:
-            raise ValueError("choice_source requires 'table_from_values' field")
+        if table_id:
+            # Generate choices from a predefined table
+            return self._generate_choices_from_table(table_id, display_format, context)
+        elif table_from_values:
+            # Generate choices from context values
+            return self._generate_choices_from_values(
+                table_from_values, display_format, context
+            )
+        else:
+            raise ValueError(
+                "choice_source requires either 'table' or 'table_from_values' field"
+            )
 
+    def _generate_choices_from_table(
+        self, table_id: str, display_format: str, context: GrimoireContext
+    ) -> list[dict[str, Any]]:
+        """Generate choices from a predefined table.
+
+        Args:
+            table_id: ID of the table to use
+            display_format: Template for choice labels
+            context: Current execution context
+
+        Returns:
+            List of choice dictionaries
+
+        Raises:
+            ValueError: If table is not found
+        """
+        if table_id not in self.system.tables:
+            raise ValueError(f"Table '{table_id}' not found in system")
+
+        table_def = self.system.tables[table_id]
+        choices = []
+
+        for entry in table_def.entries:
+            entry_value = entry.get("value")
+            if entry_value is None:
+                continue
+
+            # Set temporary variables for template rendering
+            temp_context = context.set_variable("entry", entry_value)
+            temp_context = temp_context.set_template_resolver(self.template_resolver)
+
+            # Resolve the display format template
+            try:
+                label = temp_context.resolve_template(display_format)
+            except Exception:
+                # Fallback to simple string representation
+                label = str(entry_value)
+
+            choices.append(
+                {
+                    "id": str(entry_value),
+                    "label": str(label) if label is not None else str(entry_value),
+                }
+            )
+
+        return choices
+
+    def _generate_choices_from_values(
+        self, table_from_values: str, display_format: str, context: GrimoireContext
+    ) -> list[dict[str, Any]]:
+        """Generate choices from context values.
+
+        Args:
+            table_from_values: Path to data in context
+            display_format: Template for choice labels
+            context: Current execution context
+
+        Returns:
+            List of choice dictionaries
+
+        Raises:
+            ValueError: If data is not found or invalid
+        """
         # Resolve the data path
         data = context.resolve_template(f"{{{{ {table_from_values} }}}}")
 
