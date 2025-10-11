@@ -6,6 +6,7 @@ from typing import Any, Callable
 
 from grimoire_context import GrimoireContext
 from grimoire_logging import get_logger
+from prefect import task
 
 from ...models.grimoire_definitions import FlowStep
 from ..decorators import handle_execution_error
@@ -26,6 +27,12 @@ class DiceRollStepExecutor:
         """
         self.dice_service = dice_service
 
+    @task(
+        persist_result=False,
+        retries=1,  # Retry dice rolls once (in case of validation errors)
+        retry_delay_seconds=1,
+        log_prints=False,
+    )
     @handle_execution_error("Dice roll")
     def execute(
         self,

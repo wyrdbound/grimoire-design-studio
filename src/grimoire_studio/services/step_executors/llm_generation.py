@@ -6,6 +6,7 @@ from typing import Any, Callable
 
 from grimoire_context import GrimoireContext
 from grimoire_logging import get_logger
+from prefect import task
 
 from ...models.grimoire_definitions import CompleteSystem, FlowStep
 from ..decorators import handle_execution_error
@@ -37,6 +38,14 @@ class LLMGenerationStepExecutor:
         self.llm_service = llm_service
         self.template_dict_resolver = template_dict_resolver
 
+    @task(
+        name="llm_generation_step",
+        task_run_name="llm_gen_{step.id}",
+        persist_result=False,
+        retries=3,  # Retry LLM calls up to 3 times
+        retry_delay_seconds=2,  # Wait 2 seconds between retries
+        log_prints=False,
+    )
     @handle_execution_error("LLM generation")
     def execute(
         self,
