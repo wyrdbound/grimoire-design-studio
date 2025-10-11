@@ -837,12 +837,12 @@ class FlowExecutionService:
             )
 
         # For model types, try to instantiate and return fully-resolved dict
-        # If instantiation fails (invalid data), return as-is to allow
-        # deferred validation via validate_value action
+        # Use create_model_without_validation to allow partial objects during flow execution
+        # Final validation happens at explicit validate_value actions
         if expected_type in self.system.models and isinstance(value, dict):
             try:
-                # Create GrimoireModel instance (applies defaults/derived attrs)
-                model_obj = self.object_service.create_object(value)
+                # Create GrimoireModel instance without validation (applies defaults/derived attrs)
+                model_obj = self.object_service.create_object_without_validation(value)
                 # Convert to fully-resolved dict representation
                 return dict(model_obj)
             except Exception:
