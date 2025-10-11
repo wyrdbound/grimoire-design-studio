@@ -136,6 +136,15 @@ class ObjectInstantiationService:
             ValueError: If data is invalid or model type unknown
             RuntimeError: If object creation fails
         """
+
+        logger.info(f"Data received with type {type(data)}")
+        logger.info(f"Data: {data}")
+        if isinstance(data, GrimoireModel):
+            logger.debug(
+                "Data is already a GrimoireModel instance, returning as-is without validation"
+            )
+            return data
+
         if not isinstance(data, dict):
             raise ValueError("Object data must be a dictionary")
 
