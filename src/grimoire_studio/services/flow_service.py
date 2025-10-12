@@ -126,7 +126,10 @@ class FlowExecutionService:
             ),
             "player_input": PlayerInputStepExecutor(),
             "player_choice": PlayerChoiceStepExecutor(
-                self.system, self.template_resolver, self._execute_action
+                self.system,
+                self.template_resolver,
+                self._execute_action,
+                self.object_service,
             ),
             "llm_generation": LLMGenerationStepExecutor(
                 self.system, self.llm_service, self._resolve_templates_in_dict
