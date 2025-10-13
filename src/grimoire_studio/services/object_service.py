@@ -16,6 +16,7 @@ from grimoire_model import (  # Explicit import - fail fast if not available
     create_model,
     get_default_registry,
     register_model,
+    register_primitive_type,
     validate_model_data,
 )
 from grimoire_model.core.model import GrimoireModel
@@ -51,6 +52,9 @@ class ObjectInstantiationService:
             # Get the model registry
             self.model_registry = get_default_registry()
 
+            # Register domain-specific primitive types for TTRPG systems
+            self._register_primitive_types()
+
             # Register all models from the system (they're already grimoire-model objects)
             for _model_id, model_def in system.models.items():
                 register_model(system.system.id, model_def)
@@ -62,6 +66,24 @@ class ObjectInstantiationService:
             error_msg = f"Failed to initialize model registry: {e}"
             logger.error(error_msg)
             raise RuntimeError(error_msg) from e
+
+    def _register_primitive_types(self) -> None:
+        """Register domain-specific primitive types for TTRPG systems.
+
+        This registers common primitive types used in tabletop RPG systems
+        so they are treated as primitive values instead of custom models.
+        """
+        try:
+            # Register dice roll notation type (e.g., "1d6", "2d10+3")
+            register_primitive_type("roll")
+
+            logger.debug(
+                f"Registered custom primitive types in grimoire-model registry"
+            )
+
+        except Exception as e:
+            logger.warning(f"Failed to register some primitive types: {e}")
+            # Continue anyway - this is not critical for basic functionality
 
     def _determine_model_type(self, data: dict[str, Any]) -> str:
         """Determine the model type from object data.

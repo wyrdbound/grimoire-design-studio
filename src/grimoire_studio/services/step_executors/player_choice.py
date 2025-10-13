@@ -297,12 +297,29 @@ class PlayerChoiceStepExecutor:
         # If we have an object_service, instantiate the proper object
         if self.object_service:
             try:
-                # If entry_value is a string, create object from that ID
+                # If entry_value is a string, look up object from compendium first
                 if isinstance(entry_value, str):
-                    object_data = {
-                        "model": table_def.entry_type,
-                        "id": entry_value,
-                    }
+                    # Try to find the object in compendiums first
+                    compendium_data = self._find_in_compendiums(
+                        entry_value, table_def.entry_type
+                    )
+
+                    if compendium_data:
+                        # Found in compendium, use full data
+                        object_data = {
+                            "model": table_def.entry_type,
+                            **compendium_data,
+                        }
+                    else:
+                        # Not found in compendium, create minimal object
+                        logger.warning(
+                            f"Object '{entry_value}' of type '{table_def.entry_type}' not found in compendiums. "
+                            f"Creating minimal object - may be missing attributes."
+                        )
+                        object_data = {
+                            "model": table_def.entry_type,
+                            "id": entry_value,
+                        }
                 else:
                     # If entry_value is a dict, use it as object attributes
                     object_data = {
@@ -368,3 +385,40 @@ class PlayerChoiceStepExecutor:
             )
 
         return choices
+
+    def _find_in_compendiums(
+        self, entry_id: str, model_type: str
+    ) -> dict[str, Any] | None:
+        """Find an object in compendiums by ID and model type.
+
+        Args:
+            entry_id: The ID of the entry to find (e.g., "dagger")
+            model_type: The expected model type (e.g., "weapon")
+
+        Returns:
+            Dictionary with object attributes if found, None otherwise
+        """
+        # Search through all compendiums
+        for compendium in self.system.compendiums.values():
+            # Check if this compendium is for the right model type
+            if compendium.model == model_type:
+                # Look for the entry in this compendium
+                if entry_id in compendium.entries:
+                    entry_data = compendium.entries[entry_id]
+                    logger.info(
+                        f"Found '{entry_id}' in compendium '{compendium.id}': {entry_data}"
+                    )
+                    # Ensure we return a dict
+                    if isinstance(entry_data, dict):
+                        return entry_data
+                    else:
+                        logger.warning(
+                            f"Entry '{entry_id}' in compendium '{compendium.id}' is not a dict: {type(entry_data)}"
+                        )
+                        return None
+
+        # Not found in any compendium
+        logger.debug(
+            f"Entry '{entry_id}' not found in any compendium for model type '{model_type}'"
+        )
+        return None
