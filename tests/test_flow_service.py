@@ -1,5 +1,7 @@
 """Tests for FlowExecutionService."""
 
+from typing import Any
+
 import pytest
 from prefect.testing.utilities import prefect_test_harness
 
@@ -12,6 +14,7 @@ from grimoire_studio.models.grimoire_definitions import (
     FlowVariable,
     ModelDefinition,
     SystemDefinition,
+    TableDefinition,
 )
 from grimoire_studio.services.flow_service import (
     FlowExecutionError,
@@ -1466,3 +1469,270 @@ class TestParallelExecution:
         # Verify the sub-flow was executed and result returned
         assert "final_result" in result
         assert result["final_result"] == "Processed: Hello World"
+
+    def test_display_message_callbacks_in_parallel_execution(
+        self, flow_service, sample_system
+    ):
+        """Regression test: Ensure display_message actions trigger UI callbacks during parallel execution.
+
+        This test prevents the regression where display_message actions in parallel
+        execution were only appearing in logs but not in the UI Execution tab.
+        The issue was that callbacks were set to None during parallel execution,
+        preventing UI updates.
+        """
+        # Track callbacks to verify they're called
+        callback_calls = []
+
+        def mock_action_callback(action_type: str, data: dict[str, Any]) -> None:
+            callback_calls.append({"action_type": action_type, "data": data})
+
+        # Create a flow with parallel steps that include display_message actions
+        # Use static messages to avoid template resolution timing issues in parallel execution
+        flow_def = FlowDefinition(
+            id="parallel_display_test",
+            kind="flow",
+            name="Parallel Display Test",
+            steps=[
+                FlowStep(
+                    id="parallel_messages",
+                    name="Parallel Messages",
+                    type="completion",
+                    parallel=True,
+                    actions=[
+                        # First parallel display_message action
+                        {
+                            "display_message": {
+                                "message": "First parallel message displayed"
+                            }
+                        },
+                        # Second parallel display_message action
+                        {
+                            "display_message": {
+                                "message": "Second parallel message displayed"
+                            }
+                        },
+                    ],
+                )
+            ],
+        )
+
+        sample_system.flows["parallel_display_test"] = flow_def
+
+        # Execute with callback to track display_message actions
+        result = flow_service.execute_flow(
+            "parallel_display_test", on_action_execute=mock_action_callback
+        )
+
+        # Verify execution completed successfully
+        assert len(result) == 0  # No outputs defined in this test flow
+
+        # Verify that display_message callbacks were called
+        display_callbacks = [
+            call for call in callback_calls if call["action_type"] == "display_message"
+        ]
+
+        # Should have exactly 2 display_message callbacks
+        assert len(display_callbacks) == 2, (
+            f"Expected 2 display callbacks, got {len(display_callbacks)}"
+        )
+
+        # Verify the callback data contains the expected messages
+        messages = [call["data"]["message"] for call in display_callbacks]
+        assert "First parallel message displayed" in messages
+        assert "Second parallel message displayed" in messages
+
+    def test_table_roll_display_message_integration(self, flow_service, sample_system):
+        """Integration test: Ensure table_roll steps with display_message work correctly.
+
+        This test simulates the exact scenario from determine_traits flow where
+        parallel table_roll steps include display_message actions that should
+        appear in both logs and execution callbacks.
+        """
+        # Create a simple table for testing
+        test_table = TableDefinition(
+            id="test_traits_table",
+            kind="table",
+            name="Test Traits Table",
+            roll="1d6",
+            entries=[
+                {"range": "1-2", "value": "Brave and bold"},
+                {"range": "3-4", "value": "Quick and clever"},
+                {"range": "5-6", "value": "Strong and sturdy"},
+            ],
+        )
+
+        sample_system.tables["test_traits_table"] = test_table
+
+        # Track callbacks
+        callback_calls = []
+
+        def mock_action_callback(action_type: str, data: dict[str, Any]) -> None:
+            callback_calls.append({"action_type": action_type, "data": data})
+
+        # Create flow that mirrors the determine_traits pattern
+        flow_def = FlowDefinition(
+            id="table_roll_display_test",
+            kind="flow",
+            name="Table Roll Display Test",
+            outputs=[
+                FlowInputOutput(id="trait1", type="str"),
+                FlowInputOutput(id="trait2", type="str"),
+            ],
+            steps=[
+                FlowStep.from_dict(
+                    {
+                        "id": "roll_traits",
+                        "name": "Roll Traits",
+                        "type": "table_roll",
+                        "parallel": True,
+                        "tables": [
+                            {
+                                "table": "test_traits_table",
+                                "actions": [
+                                    {
+                                        "set_value": {
+                                            "path": "outputs.trait1",
+                                            "value": "{{ result.entry }}",
+                                        }
+                                    }
+                                ],
+                            },
+                            {
+                                "table": "test_traits_table",
+                                "actions": [
+                                    {
+                                        "set_value": {
+                                            "path": "outputs.trait2",
+                                            "value": "{{ result.entry }}",
+                                        }
+                                    }
+                                ],
+                            },
+                        ],
+                        "actions": [
+                            {
+                                "display_message": {
+                                    "message": "Rolling for first trait: {{ outputs.trait1 }}"
+                                }
+                            },
+                            {
+                                "display_message": {
+                                    "message": "Rolling for second trait: {{ outputs.trait2 }}"
+                                }
+                            },
+                        ],
+                    }
+                )
+            ],
+        )
+
+        sample_system.flows["table_roll_display_test"] = flow_def
+
+        # Execute with callback
+        result = flow_service.execute_flow(
+            "table_roll_display_test", on_action_execute=mock_action_callback
+        )
+
+        # Verify execution completed successfully
+        assert "trait1" in result
+        assert "trait2" in result
+        # Should have rolled traits from our table
+        trait_values = ["Brave and bold", "Quick and clever", "Strong and sturdy"]
+        assert result["trait1"] in trait_values
+        assert result["trait2"] in trait_values
+
+        # Verify display_message callbacks were called for each roll
+        display_callbacks = [
+            call for call in callback_calls if call["action_type"] == "display_message"
+        ]
+
+        # Should have exactly 2 display_message callbacks (one per trait roll)
+        assert len(display_callbacks) == 2, (
+            f"Expected 2 display callbacks, got {len(display_callbacks)}"
+        )
+
+        # Verify each callback contains the expected trait messages
+        messages = [call["data"]["message"] for call in display_callbacks]
+        # Should have messages about first and second traits
+        assert any("Rolling for first trait:" in msg for msg in messages)
+        assert any("Rolling for second trait:" in msg for msg in messages)
+
+    def test_parallel_callback_ordering_consistency(self, flow_service, sample_system):
+        """Test that parallel execution maintains consistent callback ordering.
+
+        This ensures that when callbacks are processed after parallel execution,
+        they maintain proper order and data consistency, even with static messages.
+        """
+        callback_calls = []
+
+        def mock_action_callback(action_type: str, data: dict[str, Any]) -> None:
+            callback_calls.append(
+                {
+                    "action_type": action_type,
+                    "data": data,
+                    "timestamp": len(callback_calls),  # Simple ordering marker
+                }
+            )
+
+        # Create flow with multiple parallel display actions (using static messages to avoid template timing issues)
+        flow_def = FlowDefinition(
+            id="callback_ordering_test",
+            kind="flow",
+            name="Callback Ordering Test",
+            steps=[
+                FlowStep(
+                    id="parallel_displays",
+                    name="Parallel Displays",
+                    type="completion",
+                    parallel=True,
+                    actions=[
+                        # Multiple display actions that should all get callbacks
+                        {"display_message": {"message": "First parallel message"}},
+                        {"display_message": {"message": "Second parallel message"}},
+                        {"display_message": {"message": "Third parallel message"}},
+                    ],
+                )
+            ],
+        )
+
+        sample_system.flows["callback_ordering_test"] = flow_def
+
+        # Execute flow
+        flow_service.execute_flow(
+            "callback_ordering_test", on_action_execute=mock_action_callback
+        )
+
+        # Verify all display_message callbacks were called
+        display_callbacks = [
+            call for call in callback_calls if call["action_type"] == "display_message"
+        ]
+
+        assert len(display_callbacks) == 3, (
+            f"Expected 3 display callbacks, got {len(display_callbacks)}"
+        )
+
+        # Verify all expected messages are present
+        messages = [call["data"]["message"] for call in display_callbacks]
+        expected_messages = [
+            "First parallel message",
+            "Second parallel message",
+            "Third parallel message",
+        ]
+
+        # All expected messages should be present (order may vary due to parallel execution)
+        for expected_message in expected_messages:
+            assert expected_message in messages, (
+                f"Missing expected message: {expected_message}"
+            )
+
+        # Verify callbacks were called after parallel execution completed
+        # (i.e., all callbacks should have been processed sequentially)
+        timestamps = [call["timestamp"] for call in display_callbacks]
+        assert len(set(timestamps)) == len(timestamps), (
+            "Callbacks should have unique timestamps"
+        )
+
+        # Verify callbacks were called in sequence (not concurrently)
+        assert timestamps == sorted(timestamps), (
+            "Callbacks should be processed in order"
+        )

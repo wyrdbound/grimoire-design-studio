@@ -77,9 +77,7 @@ class ObjectInstantiationService:
             # Register dice roll notation type (e.g., "1d6", "2d10+3")
             register_primitive_type("roll")
 
-            logger.debug(
-                f"Registered custom primitive types in grimoire-model registry"
-            )
+            logger.debug("Registered custom primitive types in grimoire-model registry")
 
         except Exception as e:
             logger.warning(f"Failed to register some primitive types: {e}")

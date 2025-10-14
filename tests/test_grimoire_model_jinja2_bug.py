@@ -10,9 +10,9 @@ Once the upstream issue is fixed in grimoire-model, these tests should pass.
 
 import pytest
 from grimoire_model import (
+    AttributeDefinition,
     Jinja2TemplateResolver,
     ModelDefinition,
-    AttributeDefinition,
     create_model_without_validation,
 )
 
@@ -38,7 +38,12 @@ class TestGrimoireModelJinja2Stringification:
             attributes=attrs,
         )
 
-        weapon_data = {"model": "weapon", "name": "Dagger", "type": "melee", "damage": "1d6"}
+        weapon_data = {
+            "model": "weapon",
+            "name": "Dagger",
+            "type": "melee",
+            "damage": "1d6",
+        }
         return create_model_without_validation(weapon_def, weapon_data)
 
     @pytest.fixture
@@ -70,7 +75,9 @@ class TestGrimoireModelJinja2Stringification:
         assert result[1]["name"] == "Shield"
 
     @pytest.mark.xfail(reason="GrimoireModel in list gets stringified - upstream bug")
-    def test_list_with_grimoire_model_should_preserve_type(self, resolver, weapon_model):
+    def test_list_with_grimoire_model_should_preserve_type(
+        self, resolver, weapon_model
+    ):
         """Test that lists containing GrimoireModel should stay as lists."""
         context = {"item": weapon_model}
         result = resolver.resolve_template("{{ [item] }}", context)
@@ -81,7 +88,9 @@ class TestGrimoireModelJinja2Stringification:
         assert isinstance(result[0], type(weapon_model))
         assert result[0].name == "Dagger"
 
-    @pytest.mark.xfail(reason="List concatenation with GrimoireModel gets stringified - upstream bug")
+    @pytest.mark.xfail(
+        reason="List concatenation with GrimoireModel gets stringified - upstream bug"
+    )
     def test_list_concatenation_with_grimoire_model_should_preserve_type(
         self, resolver, weapon_model
     ):
@@ -95,7 +104,9 @@ class TestGrimoireModelJinja2Stringification:
         assert isinstance(result[0], type(weapon_model))
         assert result[0].name == "Dagger"
 
-    @pytest.mark.xfail(reason="Mixed list concatenation with GrimoireModel gets stringified - upstream bug")
+    @pytest.mark.xfail(
+        reason="Mixed list concatenation with GrimoireModel gets stringified - upstream bug"
+    )
     def test_mixed_list_concatenation_with_grimoire_model(self, resolver, weapon_model):
         """Test concatenating existing items with GrimoireModel."""
         existing_item = {"name": "Existing Item", "type": "item"}
@@ -106,7 +117,9 @@ class TestGrimoireModelJinja2Stringification:
         assert isinstance(result, list), f"Expected list, got {type(result)}: {result}"
         assert len(result) == 2
         assert result[0] == existing_item  # Regular dict should be preserved
-        assert isinstance(result[1], type(weapon_model))  # GrimoireModel should be preserved
+        assert isinstance(
+            result[1], type(weapon_model)
+        )  # GrimoireModel should be preserved
 
     def test_current_stringification_behavior(self, resolver, weapon_model):
         """Document the current broken behavior for debugging."""
@@ -120,7 +133,9 @@ class TestGrimoireModelJinja2Stringification:
         # This is the current broken behavior that should be fixed
 
     @pytest.mark.xfail(reason="Dict with GrimoireModel gets stringified - upstream bug")
-    def test_dict_with_grimoire_model_should_preserve_type(self, resolver, weapon_model):
+    def test_dict_with_grimoire_model_should_preserve_type(
+        self, resolver, weapon_model
+    ):
         """Test that dicts containing GrimoireModel should stay as dicts."""
         context = {"item": weapon_model}
         result = resolver.resolve_template("{{ {'weapon': item} }}", context)
@@ -144,7 +159,7 @@ class TestWorkaroundStrategies:
 
         weapon_def = ModelDefinition(
             id="weapon",
-            name="Weapon", 
+            name="Weapon",
             kind="model",
             description="Weapon item",
             version=1,
@@ -154,7 +169,9 @@ class TestWorkaroundStrategies:
         weapon_data = {"model": "weapon", "name": "Dagger", "type": "melee"}
         return create_model_without_validation(weapon_def, weapon_data)
 
-    def test_workaround_avoid_templates_for_grimoire_model_collections(self, weapon_model):
+    def test_workaround_avoid_templates_for_grimoire_model_collections(
+        self, weapon_model
+    ):
         """Test workaround: avoid Jinja2 templates for GrimoireModel collections."""
         # Instead of using templates, build the list programmatically
         inventory = []

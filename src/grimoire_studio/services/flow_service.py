@@ -597,6 +597,10 @@ class FlowExecutionService:
             FlowExecutionError: If any action execution fails
         """
 
+        # Store callback information for actions that need UI callbacks
+        # Collected during parallel execution and called sequentially afterward
+        callback_data = []
+
         # Create callable operations for each action
         def create_action_operation(
             action: dict[str, Any],
@@ -612,7 +616,41 @@ class FlowExecutionService:
 
                 handler = self._action_handlers.get(action_type)
                 if handler:
-                    result = handler.execute(action_data, ctx, None)
+                    # For display_message and display_value, we need to collect callback data
+                    # since we can't call UI callbacks during parallel execution
+                    if action_type in ("display_message", "display_value"):
+                        # Execute handler without callback
+                        result = handler.execute(action_data, ctx, None)
+
+                        # Collect callback data for later sequential execution
+                        if on_action_execute:
+                            # For display_message, extract the resolved message
+                            if action_type == "display_message":
+                                # Handle both dict and string formats
+                                if isinstance(action_data, str):
+                                    message = action_data
+                                else:
+                                    message = action_data.get("message", "")
+
+                                # Resolve template if message is a string
+                                if isinstance(message, str):
+                                    resolved = ctx.resolve_template(message)
+                                    message = (
+                                        str(resolved)
+                                        if resolved is not None
+                                        else message
+                                    )
+
+                                callback_data.append(
+                                    ("display_message", {"message": str(message)})
+                                )
+                            else:  # display_value
+                                callback_data.append((action_type, action_data))
+                    else:
+                        # For other actions, execute normally without callback
+                        # (callbacks will be called separately after parallel execution)
+                        result = handler.execute(action_data, ctx, None)
+
                     return result if result is not None else ctx
                 else:
                     logger.warning(f"Unknown action type: {action_type}")
@@ -626,8 +664,13 @@ class FlowExecutionService:
         # Execute all operations in parallel using grimoire-context
         context = context.execute_parallel(operations)
 
-        # Notify callbacks for all actions (callbacks are not parallel-safe)
+        # Now safely call UI callbacks sequentially
         if on_action_execute:
+            # First, call callbacks for display actions (from collected data)
+            for action_type, callback_params in callback_data:
+                on_action_execute(action_type, callback_params)
+
+            # Then, call callbacks for other action types
             for action in actions:
                 if action:
                     action_type = next(iter(action.keys()))
