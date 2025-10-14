@@ -8,11 +8,12 @@ This test confirms:
 4. The Knave weapon model works end-to-end
 """
 
-from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
+from grimoire_model import AttributeDefinition, ModelDefinition
 
-from grimoire_studio.core.project_manager import ProjectManager
+from grimoire_studio.models.grimoire_definitions import CompleteSystem
 from grimoire_studio.services.object_service import ObjectInstantiationService
 
 
@@ -20,10 +21,59 @@ class TestGrimoireModelIssuesFixed:
     """Test that both grimoire-model issues are resolved."""
 
     def setup_method(self):
-        """Load Knave system for testing."""
-        system_path = Path(__file__).parent.parent / "systems" / "knave_1e"
-        project_manager = ProjectManager()
-        self.system = project_manager.load_system(system_path)
+        """Create test system with models that replicate Knave patterns."""
+        # Create test models that replicate Knave system patterns
+
+        # Base item model
+        item_model = ModelDefinition(
+            id="item",
+            name="Item",
+            description="Base item model",
+            version=1,
+            attributes={
+                "name": AttributeDefinition(type="str", required=True),
+                "cost": AttributeDefinition(type="int", default=0),
+                "description": AttributeDefinition(type="str", optional=True),
+            },
+        )
+
+        # Breakable model (mixin)
+        breakable_model = ModelDefinition(
+            id="breakable",
+            name="Breakable",
+            description="Breakable item mixin",
+            version=1,
+            attributes={
+                "quality": AttributeDefinition(type="int", default=3),
+            },
+        )
+
+        # Weapon model (extends item + breakable, uses 'roll' type)
+        weapon_model = ModelDefinition(
+            id="weapon",
+            name="Weapon",
+            description="Weapon model with roll damage type",
+            version=1,
+            extends=["item", "breakable"],
+            attributes={
+                "damage": AttributeDefinition(type="roll", required=True),
+                "type": AttributeDefinition(
+                    type="str", enum=["melee", "ranged"], default="melee"
+                ),
+                "hands": AttributeDefinition(type="int", default=1),
+            },
+        )
+
+        # Create mock system
+        self.system = Mock(spec=CompleteSystem)
+        self.system.models = {
+            "item": item_model,
+            "breakable": breakable_model,
+            "weapon": weapon_model,
+        }
+        self.system.system = Mock()
+        self.system.system.id = "test_system"
+
         self.obj_service = ObjectInstantiationService(self.system)
 
     def test_roll_primitive_type_registration(self):
