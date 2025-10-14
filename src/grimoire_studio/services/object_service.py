@@ -16,8 +16,10 @@ from grimoire_model import (  # Explicit import - fail fast if not available
     create_model,
     get_default_registry,
     register_model,
+    register_primitive_type,
     validate_model_data,
 )
+from grimoire_model.core.model import GrimoireModel
 
 from ..models.grimoire_definitions import CompleteSystem, FlowDefinition
 
@@ -50,6 +52,9 @@ class ObjectInstantiationService:
             # Get the model registry
             self.model_registry = get_default_registry()
 
+            # Register domain-specific primitive types for TTRPG systems
+            self._register_primitive_types()
+
             # Register all models from the system (they're already grimoire-model objects)
             for _model_id, model_def in system.models.items():
                 register_model(system.system.id, model_def)
@@ -61,6 +66,22 @@ class ObjectInstantiationService:
             error_msg = f"Failed to initialize model registry: {e}"
             logger.error(error_msg)
             raise RuntimeError(error_msg) from e
+
+    def _register_primitive_types(self) -> None:
+        """Register domain-specific primitive types for TTRPG systems.
+
+        This registers common primitive types used in tabletop RPG systems
+        so they are treated as primitive values instead of custom models.
+        """
+        try:
+            # Register dice roll notation type (e.g., "1d6", "2d10+3")
+            register_primitive_type("roll")
+
+            logger.debug("Registered custom primitive types in grimoire-model registry")
+
+        except Exception as e:
+            logger.warning(f"Failed to register some primitive types: {e}")
+            # Continue anyway - this is not critical for basic functionality
 
     def _determine_model_type(self, data: dict[str, Any]) -> str:
         """Determine the model type from object data.
@@ -114,6 +135,53 @@ class ObjectInstantiationService:
             return game_object
         except Exception as e:
             error_msg = f"Failed to create {model_type} object: {e}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg) from e
+
+    def create_object_without_validation(self, data: dict[str, Any]) -> Any:
+        """Create a game object from data without validation.
+
+        This method creates GrimoireModel objects without validation,
+        allowing for incremental object building during flow execution.
+        Validation should be performed later using validate_value actions
+        or at appropriate checkpoints.
+
+        Args:
+            data: Object data dictionary with 'model' field
+
+        Returns:
+            GrimoireModel instance without validation
+
+        Raises:
+            ValueError: If data is invalid or model type unknown
+            RuntimeError: If object creation fails
+        """
+
+        logger.info(f"Data received with type {type(data)}")
+        logger.info(f"Data: {data}")
+        if isinstance(data, GrimoireModel):
+            logger.debug(
+                "Data is already a GrimoireModel instance, returning as-is without validation"
+            )
+            return data
+
+        if not isinstance(data, dict):
+            raise ValueError("Object data must be a dictionary")
+
+        model_type = self._determine_model_type(data)
+        logger.debug(f"Creating {model_type} object without validation")
+
+        try:
+            # Import the new function from grimoire-model
+            from grimoire_model import create_model_without_validation
+
+            # Get the model definition and create the object without validation
+            model_def = self.system.models[model_type]
+            game_object = create_model_without_validation(model_def, data)
+            logger.info(f"Successfully created {model_type} object without validation")
+            return game_object
+        except Exception as e:
+            error_msg = f"Failed to create {model_type} object without validation: {e}"
             logger.error(error_msg)
             raise RuntimeError(error_msg) from e
 
@@ -235,10 +303,20 @@ class ObjectInstantiationService:
                     )
                 # Handle model types
                 elif input_type in self.system.models:
-                    # Ensure the value has the model type specified
-                    if isinstance(value, dict) and "model" not in value:
-                        value = {"model": input_type, **value}
-                    instantiated_inputs[input_id] = self.create_object(value)
+                    # Check if it's already a GrimoireModel - pass through without validation
+                    if isinstance(value, GrimoireModel):
+                        logger.debug(
+                            f"Input '{input_id}' is already a GrimoireModel, passing through without validation"
+                        )
+                        instantiated_inputs[input_id] = value
+                    else:
+                        # Ensure the value has the model type specified
+                        if isinstance(value, dict) and "model" not in value:
+                            value = {"model": input_type, **value}
+                        # Use create_object_without_validation for flow inputs to allow partial objects
+                        instantiated_inputs[input_id] = (
+                            self.create_object_without_validation(value)
+                        )
                 else:
                     # For other types, validate as-is but log a warning
                     logger.warning(

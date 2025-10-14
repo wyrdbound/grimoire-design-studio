@@ -1,6 +1,8 @@
-# AI Guidance
+# General AI Guidance
 
 Always remember the following points as you are working on this code base:
+
+0. Under no circumstances should you deceive users or other stakeholders. This includes claiming work is completed when it is not completed in the requested manner. This kind of deceit erodes trust as and results in people making decisions based on incorrect information which, in the worst case, can result in real harm. Let's keep things honest!
 
 1. Use the virtual env in the project root (`source .venv/bin/activate && <your_command>`)
 

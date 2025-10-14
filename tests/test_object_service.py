@@ -143,9 +143,9 @@ class TestFlowInstantiation:
             "player_char": {"name": "Hero", "level": 5, "strength": 15},
         }
 
-        # Mock the create_object method to avoid grimoire-model calls
-        original_create_object = service.create_object
-        service.create_object = lambda data: {"mocked_object": data}
+        # Mock the create_object_without_validation method to avoid grimoire-model calls
+        original_create_object = service.create_object_without_validation
+        service.create_object_without_validation = lambda data: {"mocked_object": data}
 
         try:
             result = service.instantiate_flow_input(flow_def, input_data)
@@ -154,7 +154,7 @@ class TestFlowInstantiation:
             assert result["player_level"] == 5
             assert result["player_char"]["mocked_object"]["model"] == "character"
         finally:
-            service.create_object = original_create_object
+            service.create_object_without_validation = original_create_object
 
     def test_instantiate_flow_input_missing_required(self, sample_flow_system):
         """Test flow input instantiation with missing required input."""
@@ -323,3 +323,56 @@ class TestFlowInstantiation:
 
         # Should use value as-is with a warning
         assert result["test_input"] == "some_value"
+
+    def test_partial_character_flow_input_regression(self, sample_system):
+        """Regression test for partial character objects as flow inputs.
+
+        This test prevents breaking the fix for the issue where partial character
+        objects passed between flows would fail validation. The specific scenario
+        is from character_creation -> choose_starting_weapon where a partially
+        built character (missing name, gender, armor, traits) is passed as input.
+
+        See: character_creation flow invoke_choose_starting_weapon step
+        """
+        from grimoire_model import GrimoireModel
+
+        from grimoire_studio.services.object_service import ObjectInstantiationService
+
+        service = ObjectInstantiationService(sample_system)
+
+        # Create a flow that accepts a character input (like choose_starting_weapon)
+        flow_def = FlowDefinition(
+            id="test_partial_character_flow",
+            kind="flow",
+            name="Test Partial Character Flow",
+            inputs=[FlowInputOutput(type="character", id="character", required=True)],
+        )
+
+        # Create partial character data (missing required fields)
+        # This simulates what gets passed from character_creation to subflows
+        partial_character_data = {
+            "model": "character",
+            "level": 5,
+            # Missing required field: name (this would cause validation to fail)
+        }
+
+        input_data = {"character": partial_character_data}
+
+        # This should NOT raise a validation error
+        # Previously this would fail with: "Required field 'name' is missing"
+        result = service.instantiate_flow_input(flow_def, input_data)
+
+        # Verify the result
+        assert "character" in result
+        character_obj = result["character"]
+
+        # Should be a GrimoireModel instance with the provided fields
+        assert isinstance(character_obj, GrimoireModel)
+        assert character_obj["level"] == 5
+
+        # Should have defaults applied for fields with defaults
+        # The sample character model has level with default=1, but we override it
+        assert character_obj["level"] == 5  # Our override value
+
+        # The key test: this should work WITHOUT requiring all fields to be present
+        # This verifies that create_object_without_validation is being used

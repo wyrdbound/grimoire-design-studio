@@ -348,6 +348,8 @@ class TestPlayerChoiceStepExecutor:
         # Arrange
         # Mock template resolver
         mock_template_resolver = Mock()
+        # Mock system
+        mock_system = Mock(spec=CompleteSystem)
 
         # Mock action executor
         def mock_action_executor(
@@ -358,6 +360,7 @@ class TestPlayerChoiceStepExecutor:
             return ctx
 
         executor = PlayerChoiceStepExecutor(
+            system=mock_system,
             template_resolver=mock_template_resolver,
             action_executor=mock_action_executor,
         )
@@ -401,6 +404,8 @@ class TestPlayerChoiceStepExecutor:
         # Arrange
         # Mock template resolver
         mock_template_resolver = Mock()
+        # Mock system
+        mock_system = Mock(spec=CompleteSystem)
 
         # Mock action executor
         def mock_action_executor(
@@ -411,6 +416,7 @@ class TestPlayerChoiceStepExecutor:
             return ctx
 
         executor = PlayerChoiceStepExecutor(
+            system=mock_system,
             template_resolver=mock_template_resolver,
             action_executor=mock_action_executor,
         )

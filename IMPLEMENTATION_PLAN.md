@@ -459,7 +459,7 @@ This plan provides step-by-step instructions for building the GRIMOIRE Design St
 6. Implement `name_generation` steps with name service
 7. Implement `llm_generation` steps with prompt integration
 8. Implement `flow_call` steps for nested flows
-9. Add conditional logic and step branching
+9. Implement `conditional_branch` steps for if-then-else logic
 10. Implement step parameter templating and substitution
 
 **Deliverable:** Complete implementation of all GRIMOIRE step types
