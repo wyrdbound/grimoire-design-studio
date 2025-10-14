@@ -122,15 +122,15 @@ class TestGrimoireModelJinja2Stringification:
         )  # GrimoireModel should be preserved
 
     def test_current_stringification_behavior(self, resolver, weapon_model):
-        """Document the current broken behavior for debugging."""
+        """Test the corrected behavior with upstream fixes."""
         context = {"inventory": [], "item": weapon_model}
         result = resolver.resolve_template("{{ inventory + [item] }}", context)
 
-        # Currently this returns a string representation
-        assert isinstance(result, str)
-        assert "GrimoireModel" in result
-        assert "Dagger" in result
-        # This is the current broken behavior that should be fixed
+        # With upstream fixes, this now correctly preserves object types
+        assert isinstance(result, list)
+        assert len(result) == 1
+        assert result[0] is weapon_model
+        # The upstream fixes now preserve GrimoireModel objects correctly
 
     @pytest.mark.xfail(reason="Dict with GrimoireModel gets stringified - upstream bug")
     def test_dict_with_grimoire_model_should_preserve_type(

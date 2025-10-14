@@ -438,11 +438,17 @@ class PropertyPanel(QWidget):
         Returns:
             Group box or label for object
         """
-        if isinstance(value, dict):
+        from grimoire_model import GrimoireModel
+
+        # Handle both dict and GrimoireModel objects as expandable widgets
+        if isinstance(value, (dict, GrimoireModel)):
             group = QGroupBox(f"{attr_name} ({attr_type})")
             layout = QFormLayout(group)
 
-            for key, val in value.items():
+            # Get items - use .items() for both dict and GrimoireModel
+            items = value.items() if hasattr(value, "items") else []
+
+            for key, val in items:
                 if key != "model":  # Skip model field
                     label = QLabel(key)
                     value_widget = QLineEdit(str(val))
@@ -454,11 +460,11 @@ class PropertyPanel(QWidget):
                     layout.addRow(label, value_widget)
 
             return group
-        else:
-            # Simple display for non-dict values
-            label = QLabel(str(value) if value is not None else "None")
-            label.setStyleSheet("color: gray;")
-            return label
+
+        # Simple display for non-dict values
+        label = QLabel(str(value) if value is not None else "None")  # type: ignore[unreachable]
+        label.setStyleSheet("color: gray;")
+        return label
 
     def _on_property_changed(self, attr_name: str, new_value: Any) -> None:
         """Handle property value change.

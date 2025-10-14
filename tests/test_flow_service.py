@@ -1438,7 +1438,7 @@ class TestParallelExecution:
                     name="Call Sub Flow",
                     type="flow_call",
                     step_config={
-                        "flow_id": "sub_flow",
+                        "flow": "sub_flow",
                         "inputs": {"input_value": "Hello World"},
                         "outputs": {"result": "variables.sub_result"},
                     },

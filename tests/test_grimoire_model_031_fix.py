@@ -88,20 +88,13 @@ def test_original_resolver_handles_simple_variables_correctly(sample_system):
 
 
 def test_original_resolver_handles_missing_paths():
-    """Test that the original resolver handles missing paths correctly."""
-    from grimoire_model.core.exceptions import TemplateResolutionError
-
+    """Test that the resolver handles missing paths correctly with upstream fixes."""
     context = {"outputs": {"other": "value"}}
     resolver = Jinja2TemplateResolver()
 
-    # Missing dotted path should raise TemplateResolutionError with proper error message
-    with pytest.raises(TemplateResolutionError) as exc_info:
-        resolver.resolve_template("{{ outputs.missing }}", context)
-
-    # Verify the error message contains useful information
-    error_message = str(exc_info.value)
-    assert "missing" in error_message or "attribute" in error_message
-    assert "{{ outputs.missing }}" in error_message
+    # Missing dotted path should return None gracefully (upstream fix behavior)
+    result = resolver.resolve_template("{{ outputs.missing }}", context)
+    assert result is None, "Missing attributes should return None gracefully"
 
 
 def test_original_resolver_handles_complex_templates():

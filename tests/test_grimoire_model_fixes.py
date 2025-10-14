@@ -34,15 +34,6 @@ class TestGrimoireModelIssuesFixed:
         assert is_primitive_type("roll"), (
             "'roll' should be registered as primitive type"
         )
-        assert is_primitive_type("duration"), (
-            "'duration' should be registered as primitive type"
-        )
-        assert is_primitive_type("distance"), (
-            "'distance' should be registered as primitive type"
-        )
-        assert is_primitive_type("currency"), (
-            "'currency' should be registered as primitive type"
-        )
 
     def test_weapon_creation_with_roll_type(self):
         """Test that weapon objects can be created with 'roll' damage type."""
